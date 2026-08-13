@@ -1,0 +1,38 @@
+{
+  "id": "60934ae7-24c3-4fae-a1f9-4e26fc1d75cc",
+  "name": "SHA",
+  "publisher": "Default Publisher",
+  "version": "1.0.0.1",
+  "brief": "",
+  "description": "",
+  "privacyStatement": "",
+  "EULA": "",
+  "help": "",
+  "url": "",
+  "logo": "",
+  "dependencies": [ {
+      "id": "6303d39a-c7d1-4a0c-98d5-a07e908bf948",
+      "name": "Hospital-System",
+      "publisher": "AHS",
+      "version": "1.0.1.0"
+    }],
+  "screenshots": [],
+  "platform": "1.0.0.0",
+  "application": "28.0.0.0",
+  "idRanges": [
+    {
+            "from": 50000,
+            "to": 59999
+        }
+  ],
+  "target": "Cloud",
+  "resourceExposurePolicy": {
+    "allowDebugging": true,
+    "allowDownloadingSource": false,
+    "includeSourceInSymbolFile": true
+  },
+  "runtime": "17.0",
+  "features": [
+    "NoImplicitWith"
+  ]
+}
