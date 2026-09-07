@@ -28,10 +28,26 @@ codeunit 90013 "SHA Portal Service"
         MemberName: Text;
 
         AppointmentNo: Code[20];
+        ClaimNoText: Text;
+        ClaimNo: Code[20];
+        AppointmentNoText: Text;
         InterventionCodes: List of [Text];
+        InterventionCodeText: Text;
+        InterventionCode: Code[50];
 
+
+        ExistingInterventionCodeText: Text;
+        ExistingInterventionCode: Code[50];
+        NewInterventionCodeText: Text;
+        NewInterventionCode: Code[50];
+        RetainBillItems: Boolean;
+        BillFrom: Text;
+        BillTo: Text;
+
+        AppointmentIntervention: Record "SHA Appointment Intervention";
         ShaApiManagement: Codeunit "SHA Api Management";
-
+        ClaimProcessing: Codeunit "SHA Claim Processing";
+        ClaimHeader: Record "SHA Claim Header";
         HMSPatient: Record "HMS Patient";
 
         PatientDetails: Record "SHA Patient Details";
@@ -523,115 +539,46 @@ codeunit 90013 "SHA Portal Service"
             // ========================================================
             // START SHA VISIT + CREATE HMS APPOINTMENT
             // ========================================================
-
             'startvisit':
                 begin
-
                     // ====================================================
                     // SHA VALIDATION
                     // ====================================================
 
-                    if not GetRequiredText(
-                        JObject,
-                        'patientCrId',
-                        PatientCrId)
-                    then
-                        exit(
-                            BuildErrorResponse(
-                                'patientCrId is required.'));
+                    if not GetRequiredText(JObject, 'patientCrId', PatientCrId) then
+                        exit(BuildErrorResponse('patientCrId is required.'));
 
+                    if not GetRequiredText(JObject, 'otp', OTP) then
+                        exit(BuildErrorResponse('OTP is required.'));
 
-                    if not GetRequiredText(
-                        JObject,
-                        'otp',
-                        OTP)
-                    then
-                        exit(
-                            BuildErrorResponse(
-                                'OTP is required.'));
+                    if not GetRequiredText(JObject, 'serviceType', ServiceTypeText) then
+                        exit(BuildErrorResponse('serviceType is required.'));
 
+                    if not TryGetServiceType(ServiceTypeText, ServiceType) then
+                        exit(BuildErrorResponse('Invalid serviceType.'));
 
-                    if not GetRequiredText(
-                        JObject,
-                        'serviceType',
-                        ServiceTypeText)
-                    then
-                        exit(
-                            BuildErrorResponse(
-                                'serviceType is required.'));
-
-
-                    if not TryGetServiceType(
-                        ServiceTypeText,
-                        ServiceType)
-                    then
-                        exit(
-                            BuildErrorResponse(
-                                'Invalid serviceType.'));
                     ConsentRequestId := '';
+                    GetOptionalText(JObject, 'consentRequestId', ConsentRequestId);
 
-                    GetOptionalText(
-                        JObject,
-                        'consentRequestId',
-                        ConsentRequestId);
-
-                    if not GetInterventionCodes(
-                        JObject,
-                        InterventionCodes)
-                    then
-                        exit(
-                            BuildErrorResponse(
-                                'Select at least one intervention.'));
-
+                    if not GetInterventionCodes(JObject, InterventionCodes) then
+                        exit(BuildErrorResponse('Select at least one intervention.'));
 
                     // ====================================================
                     // HMS PATIENT IDENTIFICATION
                     // ====================================================
 
-                    if not GetRequiredText(
-                        JObject,
-                        'identificationType',
-                        IdentificationType)
-                    then
-                        exit(
-                            BuildErrorResponse(
-                                'identificationType is required.'));
+                    if not GetRequiredText(JObject, 'identificationType', IdentificationType) then
+                        exit(BuildErrorResponse('identificationType is required.'));
 
+                    if not GetRequiredText(JObject, 'identificationNumber', IdentificationNumber) then
+                        exit(BuildErrorResponse('identificationNumber is required.'));
 
-                    if not GetRequiredText(
-                        JObject,
-                        'identificationNumber',
-                        IdentificationNumber)
-                    then
-                        exit(
-                            BuildErrorResponse(
-                                'identificationNumber is required.'));
-
-
-                    GetOptionalText(
-                        JObject,
-                        'relationship',
-                        Relationship);
-
-
-                    GetOptionalText(
-                        JObject,
-                        'shaNumber',
-                        SHANumber);
-
-
-                    GetOptionalText(
-                        JObject,
-                        'memberName',
-                        MemberName);
-
+                    GetOptionalText(JObject, 'relationship', Relationship);
+                    GetOptionalText(JObject, 'shaNumber', SHANumber);
+                    GetOptionalText(JObject, 'memberName', MemberName);
 
                     // ====================================================
-                    // FIRST FIND LOCAL HMS PATIENT
-                    //
-                    // We resolve the patient BEFORE SHA visit creation.
-                    // This prevents creating a SHA visit if there is no
-                    // matching HMS patient.
+                    // FIND LOCAL HMS PATIENT FIRST
                     // ====================================================
 
                     if not FindHMSPatient(
@@ -639,9 +586,8 @@ codeunit 90013 "SHA Portal Service"
                         IdentificationType,
                         IdentificationNumber,
                         Relationship,
-                                                MemberName,
-                        HMSPatient
-                        )
+                        MemberName,
+                        HMSPatient)
                     then
                         exit(
                             BuildErrorResponse(
@@ -651,7 +597,6 @@ codeunit 90013 "SHA Portal Service"
                                     IdentificationNumber,
                                     Relationship,
                                     PatientCrId)));
-
 
                     // ====================================================
                     // CREATE SHA VISIT / VERIFY OTP
@@ -675,14 +620,11 @@ codeunit 90013 "SHA Portal Service"
                         ResponseCode,
                         ResponseMsg)
                     then
-                        exit(
-                            BuildErrorResponse(
-                                ResponseMsg));
-
+                        exit(BuildErrorResponse(ResponseMsg));
 
                     // ====================================================
-                    // SHA SUCCEEDED.
-                    // NOW CREATE LOCAL HMS APPOINTMENT.
+                    // SHA SUCCESSFUL
+                    // CREATE LOCAL HMS APPOINTMENT AND SAVE FULL SHA RESPONSE
                     // ====================================================
 
                     AppointmentNo :=
@@ -691,6 +633,8 @@ codeunit 90013 "SHA Portal Service"
                             PatientCrId,
                             ConsentRequestId,
                             InterventionCodes,
+                            ServiceType,
+                            OTP,
                             VisitId,
                             VisitNumber,
                             AuthorizationCode,
@@ -702,93 +646,249 @@ codeunit 90013 "SHA Portal Service"
                             SchemeCode,
                             SchemeName);
 
-
                     // ====================================================
                     // RESPONSE
                     // ====================================================
 
                     Clear(DataObj);
 
-
-                    DataObj.Add(
-                        'patientCrId',
-                        PatientCrId);
-
-
-                    DataObj.Add(
-                        'hmsPatientNo',
-                        HMSPatient."Patient No.");
-
-
-                    DataObj.Add(
-                        'appointmentNo',
-                        AppointmentNo);
-
-
-                    DataObj.Add(
-                        'visitId',
-                        VisitId);
-
-
-                    DataObj.Add(
-                        'visitNumber',
-                        VisitNumber);
-
-
-                    DataObj.Add(
-                        'authorizationCode',
-                        AuthorizationCode);
-
-
-                    DataObj.Add(
-                        'authorizationGuid',
-                        AuthorizationGuid);
-
-
-                    DataObj.Add(
-                        'claimStatus',
-                        ClaimStatus);
-
-
-                    DataObj.Add(
-                        'visitStart',
-                        VisitStartText);
-
-
-                    DataObj.Add(
-                        'invoiceId',
-                        InvoiceId);
-
-
-                    DataObj.Add(
-                        'invoiceNumber',
-                        InvoiceNumber);
-
-
-                    DataObj.Add(
-                        'schemeCode',
-                        SchemeCode);
-
-
-                    DataObj.Add(
-                        'schemeName',
-                        SchemeName);
-
+                    DataObj.Add('patientCrId', PatientCrId);
+                    DataObj.Add('hmsPatientNo', HMSPatient."Patient No.");
+                    DataObj.Add('appointmentNo', AppointmentNo);
+                    DataObj.Add('visitId', VisitId);
+                    DataObj.Add('visitNumber', VisitNumber);
+                    DataObj.Add('authorizationCode', AuthorizationCode);
+                    DataObj.Add('authorizationGuid', AuthorizationGuid);
+                    DataObj.Add('claimStatus', ClaimStatus);
+                    DataObj.Add('visitStart', VisitStartText);
+                    DataObj.Add('invoiceId', InvoiceId);
+                    DataObj.Add('invoiceNumber', InvoiceNumber);
+                    DataObj.Add('schemeCode', SchemeCode);
+                    DataObj.Add('schemeName', SchemeName);
+                    DataObj.Add('serviceType', Format(ServiceType));
 
                     exit(
                         BuildSuccessResponse(
                             'SHA visit verified and HMS appointment created successfully.',
                             DataObj));
-                            
                 end;
+            // ========================================================
+            // PROCESS SHA CLAIM
+            // ========================================================
+            'processclaim':
+                begin
+                    if not GetRequiredText(JObject, 'appointmentNo', AppointmentNoText) then
+                        exit(BuildErrorResponse('appointmentNo is required.'));
+
+                    AppointmentNo := CopyStr(AppointmentNoText, 1, MaxStrLen(AppointmentNo));
+
+                    if not ClaimProcessing.CreateClaimFromAppointment(AppointmentNo, ClaimHeader) then
+                        exit(BuildErrorResponse('Unable to create or retrieve the SHA claim.'));
+
+                    exit(
+                        BuildClaimResponse(
+                            ClaimHeader,
+                            'SHA claim opened successfully.'));
+                end;
+
+
+            // ========================================================
+            // ADD SHA INTERVENTION
+            // ========================================================
+
+            'addintervention':
+                begin
+                    if not GetRequiredText(JObject, 'appointmentNo', AppointmentNoText) then
+                        exit(BuildErrorResponse('appointmentNo is required.'));
+
+                    if not GetRequiredText(JObject, 'interventionCode', InterventionCodeText) then
+                        exit(BuildErrorResponse('interventionCode is required.'));
+
+                    AppointmentNo := CopyStr(AppointmentNoText, 1, MaxStrLen(AppointmentNo));
+                    InterventionCode := CopyStr(InterventionCodeText, 1, MaxStrLen(InterventionCode));
+
+                    if not ClaimProcessing.AddAppointmentIntervention(
+                        AppointmentNo,
+                        InterventionCode,
+                        ResponseCode,
+                        ResponseMsg)
+                    then
+                        exit(BuildErrorResponse(ResponseMsg));
+
+                    if not AppointmentIntervention.Get(AppointmentNo, InterventionCode) then
+                        exit(
+                            BuildErrorResponse(
+                                'Intervention was added successfully but the local intervention record could not be retrieved.'));
+
+                    Clear(DataObj);
+
+                    DataObj.Add('appointmentNo', AppointmentIntervention."Appointment No.");
+                    DataObj.Add('claimNo', AppointmentIntervention."Claim No.");
+                    DataObj.Add('patientCrId', AppointmentIntervention."Patient CR ID");
+                    DataObj.Add('interventionCode', AppointmentIntervention."Intervention Code");
+                    DataObj.Add('interventionName', AppointmentIntervention."Intervention Name");
+                    DataObj.Add('parentBenefitCode', AppointmentIntervention."Parent Benefit Code");
+                    DataObj.Add('subBenefitCode', AppointmentIntervention."Sub Benefit Code");
+                    DataObj.Add('quantity', AppointmentIntervention.Quantity);
+                    DataObj.Add('unitPrice', AppointmentIntervention."Unit Price");
+                    DataObj.Add('tariff', AppointmentIntervention.Tariff);
+                    DataObj.Add('claimAmount', AppointmentIntervention."Claim Amount");
+                    DataObj.Add('needsPreauth', AppointmentIntervention."Needs Preauth");
+                    DataObj.Add('lineStatus', AppointmentIntervention."Line Status");
+                    DataObj.Add('includeInClaim', AppointmentIntervention."Include in Claim");
+                    DataObj.Add('serviceDate', Format(AppointmentIntervention."Service Date", 0, 9));
+                    DataObj.Add('shaResponseCode', ResponseCode);
+
+                    exit(
+                        BuildSuccessResponse(
+                            ResponseMsg,
+                            DataObj));
+                end;
+// ========================================================
+// RETIRE SHA INTERVENTION
+// ========================================================
+
+'retireintervention':
+    begin
+        if not GetRequiredText(JObject, 'appointmentNo', AppointmentNoText) then
+            exit(BuildErrorResponse('appointmentNo is required.'));
+
+        if not GetRequiredText(JObject, 'interventionCode', InterventionCodeText) then
+            exit(BuildErrorResponse('interventionCode is required.'));
+
+        AppointmentNo := CopyStr(AppointmentNoText, 1, MaxStrLen(AppointmentNo));
+        InterventionCode := CopyStr(InterventionCodeText, 1, MaxStrLen(InterventionCode));
+
+        if not ClaimProcessing.RetireAppointmentIntervention(
+            AppointmentNo,
+            InterventionCode,
+            ResponseCode,
+            ResponseMsg)
+        then
+            exit(BuildErrorResponse(ResponseMsg));
+
+        Clear(DataObj);
+        DataObj.Add('appointmentNo', AppointmentNo);
+        DataObj.Add('interventionCode', InterventionCode);
+        DataObj.Add('lineStatus', 'RETIRED');
+        DataObj.Add('shaResponseCode', ResponseCode);
+
+        exit(BuildSuccessResponse(ResponseMsg, DataObj));
+    end;
+
+
+// ========================================================
+// RESTORE SHA INTERVENTION
+// ========================================================
+
+'restoreintervention':
+    begin
+        if not GetRequiredText(JObject, 'appointmentNo', AppointmentNoText) then
+            exit(BuildErrorResponse('appointmentNo is required.'));
+
+        if not GetRequiredText(JObject, 'interventionCode', InterventionCodeText) then
+            exit(BuildErrorResponse('interventionCode is required.'));
+
+        AppointmentNo := CopyStr(AppointmentNoText, 1, MaxStrLen(AppointmentNo));
+        InterventionCode := CopyStr(InterventionCodeText, 1, MaxStrLen(InterventionCode));
+
+        if not ClaimProcessing.RestoreAppointmentIntervention(
+            AppointmentNo,
+            InterventionCode,
+            ResponseCode,
+            ResponseMsg)
+        then
+            exit(BuildErrorResponse(ResponseMsg));
+
+        Clear(DataObj);
+        DataObj.Add('appointmentNo', AppointmentNo);
+        DataObj.Add('interventionCode', InterventionCode);
+        DataObj.Add('lineStatus', 'ACTIVE');
+        DataObj.Add('shaResponseCode', ResponseCode);
+
+        exit(BuildSuccessResponse(ResponseMsg, DataObj));
+    end;
+
+
+// ========================================================
+// SWITCH SHA INTERVENTION
+// ========================================================
+
+'switchintervention':
+    begin
+        if not GetRequiredText(JObject, 'appointmentNo', AppointmentNoText) then
+            exit(BuildErrorResponse('appointmentNo is required.'));
+
+        if not GetRequiredText(JObject, 'existingInterventionCode', ExistingInterventionCodeText) then
+            exit(BuildErrorResponse('existingInterventionCode is required.'));
+
+        if not GetRequiredText(JObject, 'newInterventionCode', NewInterventionCodeText) then
+            exit(BuildErrorResponse('newInterventionCode is required.'));
+
+        AppointmentNo := CopyStr(AppointmentNoText, 1, MaxStrLen(AppointmentNo));
+        ExistingInterventionCode := CopyStr(ExistingInterventionCodeText, 1, MaxStrLen(ExistingInterventionCode));
+        NewInterventionCode := CopyStr(NewInterventionCodeText, 1, MaxStrLen(NewInterventionCode));
+
+        RetainBillItems := false;
+        BillFrom := '';
+        BillTo := '';
+
+        GetOptionalBoolean(JObject, 'retainBillItems', RetainBillItems);
+        GetOptionalText(JObject, 'billFrom', BillFrom);
+        GetOptionalText(JObject, 'billTo', BillTo);
+
+        if not ClaimProcessing.SwitchAppointmentIntervention(
+            AppointmentNo,
+            ExistingInterventionCode,
+            NewInterventionCode,
+            RetainBillItems,
+            BillFrom,
+            BillTo,
+            ResponseCode,
+            ResponseMsg)
+        then
+            exit(BuildErrorResponse(ResponseMsg));
+
+        Clear(DataObj);
+        DataObj.Add('appointmentNo', AppointmentNo);
+        DataObj.Add('existingInterventionCode', ExistingInterventionCode);
+        DataObj.Add('newInterventionCode', NewInterventionCode);
+        DataObj.Add('retainBillItems', RetainBillItems);
+        DataObj.Add('shaResponseCode', ResponseCode);
+
+        exit(BuildSuccessResponse(ResponseMsg, DataObj));
+    end;
+
+            // ========================================================
+            // GET SHA CLAIM
+            // ========================================================
+
+            'getclaim':
+                begin
+                    if not GetRequiredText(JObject, 'claimNo', ClaimNoText) then
+                        exit(BuildErrorResponse('claimNo is required.'));
+
+                    ClaimNo := CopyStr(ClaimNoText, 1, MaxStrLen(ClaimNo));
+
+                    if not ClaimProcessing.GetClaim(ClaimNo, ClaimHeader) then
+                        exit(
+                            BuildErrorResponse(
+                                StrSubstNo(
+                                    'SHA Claim %1 was not found.',
+                                    ClaimNo)));
+
+                    exit(
+                        BuildClaimResponse(
+                            ClaimHeader,
+                            'SHA claim fetched successfully.'));
+                end;
+
             // ========================================================
             // INVALID ACTION
             // ========================================================
 
             else
-                exit(
-                    BuildErrorResponse(
-                        'Invalid action: ' + MyAction));
+                exit(BuildErrorResponse('Invalid action: ' + MyAction));
         end;
     end;
 
@@ -1429,104 +1529,64 @@ codeunit 90013 "SHA Portal Service"
     end;
 
     local procedure CreatePortalSHAAppointment(
-    var HMSPatient: Record "HMS Patient";
-    PatientCrId: Text;
-    ConsentRequestId: Text;
-    InterventionCodes: List of [Text];
-    VisitId: Text;
-    VisitNumber: Text;
-    AuthorizationCode: Text;
-    AuthorizationGuid: Text;
-    ClaimStatus: Text;
-    VisitStartText: Text;
-    InvoiceId: Text;
-    InvoiceNumber: Text;
-    SchemeCode: Text;
-    SchemeName: Text): Code[20]
+        var HMSPatient: Record "HMS Patient";
+        PatientCrId: Text;
+        ConsentRequestId: Text;
+        InterventionCodes: List of [Text];
+        ServiceType: Enum "SHA Service Type";
+        Otp: Text;
+        VisitId: Text;
+        VisitNumber: Text;
+        AuthorizationCode: Text;
+        AuthorizationGuid: Text;
+        ClaimStatus: Text;
+        VisitStartText: Text;
+        InvoiceId: Text;
+        InvoiceNumber: Text;
+        SchemeCode: Text;
+        SchemeName: Text): Code[20]
     var
-        AppointmentHeader:
-        Record "HMS Appointment Form Header";
-
-        ExistingAppointment:
-        Record "HMS Appointment Form Header";
-
-        HMSSetup:
-        Record "HMS Setup";
-
-        NoSeriesMgt:
-        Codeunit "No. Series";
-
-        NoSeries:
-        Code[20];
-
-        NewAppointmentNo:
-        Code[20];
-
-        DaysBtwnTodayAndLastVisit:
-        Integer;
-
-        ItsNew:
-        Option New,Revisit;
+        AppointmentHeader: Record "HMS Appointment Form Header";
+        ExistingAppointment: Record "HMS Appointment Form Header";
+        HMSSetup: Record "HMS Setup";
+        NoSeriesMgt: Codeunit "No. Series";
+        NoSeries: Code[20];
+        NewAppointmentNo: Code[20];
+        DaysBtwnTodayAndLastVisit: Integer;
+        ItsNew: Option New,Revisit;
+        VisitStartDateTime: DateTime;
     begin
-
         // ============================================================
         // VALIDATE HMS PATIENT
         // ============================================================
 
-        HMSPatient.TestField(
-            "Global Dimension 1 Code");
-
+        HMSPatient.TestField("Global Dimension 1 Code");
 
         if HMSPatient."Date Of Birth" = 0D then
-            Error(
-                'Please provide the patient''s Date of Birth.');
-
+            Error('Please provide the patient''s Date of Birth.');
 
         // ============================================================
         // CORPORATE VALIDATION
         // ============================================================
 
-        if HMSPatient."Patient Type" =
-           HMSPatient."Patient Type"::Corporate
-        then begin
-
-            HMSPatient.TestField(
-                "Insurance No.");
-
-
-            HMSPatient.TestField(
-                "Membership No");
-
+        if HMSPatient."Patient Type" = HMSPatient."Patient Type"::Corporate then begin
+            HMSPatient.TestField("Insurance No.");
+            HMSPatient.TestField("Membership No");
         end;
-
 
         // ============================================================
         // CHECK EXISTING OPEN VISIT
         // ============================================================
 
         ExistingAppointment.Reset();
-
-
-        ExistingAppointment.SetRange(
-            "Patient No.",
-            HMSPatient."Patient No.");
-
-
-        ExistingAppointment.SetRange(
-            "Appointment Date",
-            Today);
-
-
-        ExistingAppointment.SetRange(
-            Status,
-            ExistingAppointment.Status::New);
-
+        ExistingAppointment.SetRange("Patient No.", HMSPatient."Patient No.");
+        ExistingAppointment.SetRange("Appointment Date", Today);
+        ExistingAppointment.SetRange(Status, ExistingAppointment.Status::New);
 
         if ExistingAppointment.FindFirst() then
             Error(
                 'The patient already has an open visit for today. Appointment %1.',
                 ExistingAppointment."Appointment No.");
-
 
         // ============================================================
         // STANDARD HMS VALIDATION
@@ -1534,21 +1594,14 @@ codeunit 90013 "SHA Portal Service"
 
         HMSPatient.TestFields();
 
-
         // ============================================================
         // NUMBER SERIES
         // ============================================================
 
         HMSSetup.Get();
+        HMSSetup.TestField("Appointment Nos");
 
-
-        HMSSetup.TestField(
-            "Appointment Nos");
-
-
-        NoSeries :=
-            HMSSetup."Appointment Nos";
-
+        NoSeries := HMSSetup."Appointment Nos";
 
         NewAppointmentNo :=
             NoSeriesMgt.GetNextNo(
@@ -1556,31 +1609,18 @@ codeunit 90013 "SHA Portal Service"
                 Today,
                 true);
 
-
         // ============================================================
         // ACTIVATE PATIENT
         // ============================================================
 
-        HMSPatient.Activated :=
-            true;
-
-
-        HMSPatient."Active Visit No" :=
-            NewAppointmentNo;
-
+        HMSPatient.Activated := true;
+        HMSPatient."Active Visit No" := NewAppointmentNo;
 
         HMSPatient."Age in Years" :=
-            Date2DMY(
-                Today,
-                3) -
-            Date2DMY(
-                HMSPatient."Date Of Birth",
-                3);
+            Date2DMY(Today, 3) -
+            Date2DMY(HMSPatient."Date Of Birth", 3);
 
-
-        HMSPatient.Modify(
-            true);
-
+        HMSPatient.Modify(true);
 
         // ============================================================
         // CREATE APPOINTMENT
@@ -1588,151 +1628,76 @@ codeunit 90013 "SHA Portal Service"
 
         AppointmentHeader.Init();
 
-
-        AppointmentHeader."Appointment No." :=
-            NewAppointmentNo;
-
-
-        AppointmentHeader."Patient No." :=
-            HMSPatient."Patient No.";
-
-
-        AppointmentHeader."Appointment Date" :=
-            Today;
-
-
-        AppointmentHeader."Appointment Time" :=
-            Time;
-
+        AppointmentHeader."Appointment No." := NewAppointmentNo;
+        AppointmentHeader."Patient No." := HMSPatient."Patient No.";
+        AppointmentHeader."Appointment Date" := Today;
+        AppointmentHeader."Appointment Time" := Time;
 
         // ============================================================
         // SETTLEMENT TYPE
         // ============================================================
 
         case HMSPatient."Patient Type" of
-
             HMSPatient."Patient Type"::Corporate:
                 AppointmentHeader."Settlement Type" :=
                     AppointmentHeader."Settlement Type"::Credit;
 
-
             HMSPatient."Patient Type"::Cash:
                 AppointmentHeader."Settlement Type" :=
                     AppointmentHeader."Settlement Type"::Cash;
-
         end;
-
 
         // ============================================================
         // APPOINTMENT TYPE
         // ============================================================
 
         if HMSPatient."Date Registered" = Today then begin
-
-            ItsNew :=
-                ItsNew::New;
-
-
-            AppointmentHeader."Appointment Type" :=
-                'NORMAL';
-
+            ItsNew := ItsNew::New;
+            AppointmentHeader."Appointment Type" := 'NORMAL';
         end else begin
-
-            if HasSafeLastAppointmentPortal(
-                HMSPatient."Patient No.")
-            then begin
-
+            if HasSafeLastAppointmentPortal(HMSPatient."Patient No.") then begin
                 DaysBtwnTodayAndLastVisit :=
-                    HMSPatient.isLastVisitDayWithin7days(
-                        ItsNew);
-
+                    HMSPatient.isLastVisitDayWithin7days(ItsNew);
 
                 if DaysBtwnTodayAndLastVisit <= 7 then
-                    AppointmentHeader."Appointment Type" :=
-                        'REVIEW'
-
+                    AppointmentHeader."Appointment Type" := 'REVIEW'
                 else
-                    AppointmentHeader."Appointment Type" :=
-                        'REVISIT';
-
+                    AppointmentHeader."Appointment Type" := 'REVISIT';
             end else begin
-
-                ItsNew :=
-                    ItsNew::New;
-
-
-                AppointmentHeader."Appointment Type" :=
-                    'NORMAL';
-
+                ItsNew := ItsNew::New;
+                AppointmentHeader."Appointment Type" := 'NORMAL';
             end;
-
         end;
 
-
-        AppointmentHeader."Visit Type" :=
-            AppointmentHeader."Appointment Type";
-
+        AppointmentHeader."Visit Type" := AppointmentHeader."Appointment Type";
 
         // ============================================================
         // PATIENT DETAILS
         // ============================================================
 
-        AppointmentHeader."Insurance No" :=
-            HMSPatient."Insurance No.";
-
-
-        AppointmentHeader."Insurance Member No" :=
-            HMSPatient."Membership No";
-
-
-        AppointmentHeader."Patient Type" :=
-            HMSPatient."Patient Type";
-
-
-        AppointmentHeader.visitType :=
-            ItsNew;
-
-
-        AppointmentHeader."Age in Years" :=
-            HMSPatient."Age in Years";
-
-
-        AppointmentHeader.Gender :=
-            HMSPatient.Gender;
-
-
-        AppointmentHeader."User ID" :=
-            UserId;
-
-
-        AppointmentHeader.Status :=
-            AppointmentHeader.Status::New;
-
+        AppointmentHeader."Insurance No" := HMSPatient."Insurance No.";
+        AppointmentHeader."Insurance Member No" := HMSPatient."Membership No";
+        AppointmentHeader."Patient Type" := HMSPatient."Patient Type";
+        AppointmentHeader.visitType := ItsNew;
+        AppointmentHeader."Age in Years" := HMSPatient."Age in Years";
+        AppointmentHeader.Gender := HMSPatient.Gender;
+        AppointmentHeader."User ID" := UserId;
+        AppointmentHeader.Status := AppointmentHeader.Status::New;
 
         // ============================================================
-        // NAME
+        // PATIENT NAME
         // ============================================================
 
-        AppointmentHeader.Names :=
-            HMSPatient."Search Name";
-
+        AppointmentHeader.Names := HMSPatient."Search Name";
 
         if AppointmentHeader.Names = '' then
             AppointmentHeader.Names :=
-                HMSPatient.Surname +
-                ' ' +
-                HMSPatient."Middle Name" +
-                ' ' +
+                HMSPatient.Surname + ' ' +
+                HMSPatient."Middle Name" + ' ' +
                 HMSPatient."Last Name";
 
-
-        AppointmentHeader.SearchNames :=
-            AppointmentHeader.Names;
-
-
-        AppointmentHeader.Branch :=
-            HMSPatient."Global Dimension 1 Code";
-
+        AppointmentHeader.SearchNames := AppointmentHeader.Names;
+        AppointmentHeader.Branch := HMSPatient."Global Dimension 1 Code";
 
         // ============================================================
         // SHA PATIENT CONTEXT
@@ -1742,67 +1707,141 @@ codeunit 90013 "SHA Portal Service"
             CopyStr(
                 PatientCrId,
                 1,
-                MaxStrLen(
-                    AppointmentHeader."SHA Patient CR ID"));
-
+                MaxStrLen(AppointmentHeader."SHA Patient CR ID"));
 
         AppointmentHeader."SHA Consent Request ID" :=
             CopyStr(
                 ConsentRequestId,
                 1,
-                MaxStrLen(
-                    AppointmentHeader."SHA Consent Request ID"));
-
+                MaxStrLen(AppointmentHeader."SHA Consent Request ID"));
 
         // ============================================================
-        // SHA VISIT RESULT
+        // SHA OTP
         //
-        // Map these to the SHA fields already added to your
-        // Appointment Header extension.
+        // OTP is only recorded after SHA has successfully verified it.
+        // ============================================================
+
+        AppointmentHeader."SHA OTP Code" :=
+            CopyStr(
+                Otp,
+                1,
+                MaxStrLen(AppointmentHeader."SHA OTP Code"));
+
+        AppointmentHeader."OTP Recorded Date" := CurrentDateTime;
+
+        // ============================================================
+        // SHA SERVICE TYPE
+        // ============================================================
+
+        AppointmentHeader."SHA Service Type" :=
+            CopyStr(
+                Format(ServiceType),
+                1,
+                MaxStrLen(AppointmentHeader."SHA Service Type"));
+
+        // ============================================================
+        // SHA VISIT
         // ============================================================
 
         AppointmentHeader."SHA Visit ID" :=
             CopyStr(
                 VisitId,
                 1,
-                MaxStrLen(
-                    AppointmentHeader."SHA Visit ID"));
-
+                MaxStrLen(AppointmentHeader."SHA Visit ID"));
 
         AppointmentHeader."SHA Visit Number" :=
             CopyStr(
                 VisitNumber,
                 1,
-                MaxStrLen(
-                    AppointmentHeader."SHA Visit Number"));
+                MaxStrLen(AppointmentHeader."SHA Visit Number"));
 
+        // ============================================================
+        // SHA VISIT START
+        // ============================================================
+
+        if VisitStartText <> '' then
+            if TryEvaluateSHADateTime(VisitStartText, VisitStartDateTime) then
+                AppointmentHeader."SHA Visit Start" := VisitStartDateTime;
+
+        // ============================================================
+        // SHA AUTHORIZATION
+        // ============================================================
 
         AppointmentHeader."SHA Authorization Code" :=
             CopyStr(
                 AuthorizationCode,
                 1,
-                MaxStrLen(
-                    AppointmentHeader."SHA Authorization Code"));
-
+                MaxStrLen(AppointmentHeader."SHA Authorization Code"));
 
         AppointmentHeader."SHA Authorization GUID" :=
             CopyStr(
                 AuthorizationGuid,
                 1,
-                MaxStrLen(
-                    AppointmentHeader."SHA Authorization GUID"));
+                MaxStrLen(AppointmentHeader."SHA Authorization GUID"));
 
+        if AuthorizationCode <> '' then
+            AppointmentHeader."SHA Authorization Status" :=
+                CopyStr(
+                    'Authorized',
+                    1,
+                    MaxStrLen(AppointmentHeader."SHA Authorization Status"))
+        else
+            AppointmentHeader."SHA Authorization Status" :=
+                CopyStr(
+                    'Verified',
+                    1,
+                    MaxStrLen(AppointmentHeader."SHA Authorization Status"));
 
         // ============================================================
-        // INSERT
+        // SHA CLAIM STATUS
         // ============================================================
 
-        AppointmentHeader.Insert(
-            true);
-
+        AppointmentHeader."SHA Claim Status" :=
+            CopyStr(
+                ClaimStatus,
+                1,
+                MaxStrLen(AppointmentHeader."SHA Claim Status"));
 
         // ============================================================
-        // SAVE INTERVENTIONS
+        // SHA INVOICE
+        // ============================================================
+
+        AppointmentHeader."SHA Invoice ID" :=
+            CopyStr(
+                InvoiceId,
+                1,
+                MaxStrLen(AppointmentHeader."SHA Invoice ID"));
+
+        AppointmentHeader."SHA Invoice Number" :=
+            CopyStr(
+                InvoiceNumber,
+                1,
+                MaxStrLen(AppointmentHeader."SHA Invoice Number"));
+
+        // ============================================================
+        // SHA SCHEME
+        // ============================================================
+
+        AppointmentHeader."SHA Scheme Code" :=
+            CopyStr(
+                SchemeCode,
+                1,
+                MaxStrLen(AppointmentHeader."SHA Scheme Code"));
+
+        AppointmentHeader."SHA Scheme Name" :=
+            CopyStr(
+                SchemeName,
+                1,
+                MaxStrLen(AppointmentHeader."SHA Scheme Name"));
+
+        // ============================================================
+        // INSERT APPOINTMENT
+        // ============================================================
+
+        AppointmentHeader.Insert(true);
+
+        // ============================================================
+        // SAVE SHA INTERVENTIONS AGAINST THIS VISIT
         // ============================================================
 
         SavePortalInterventions(
@@ -1810,13 +1849,9 @@ codeunit 90013 "SHA Portal Service"
             PatientCrId,
             InterventionCodes);
 
-
         Commit();
 
-
-        exit(
-            AppointmentHeader."Appointment No.");
-
+        exit(AppointmentHeader."Appointment No.");
     end;
 
     local procedure SavePortalInterventions(
@@ -1904,7 +1939,65 @@ codeunit 90013 "SHA Portal Service"
 
     end;
 
+    // ================================================================
+    // CLAIM RESPONSE
+    // ================================================================
 
+    local procedure BuildClaimResponse(
+        ClaimHeader: Record "SHA Claim Header";
+        MessageText: Text): Text
+    var
+        DataObj: JsonObject;
+    begin
+        Clear(DataObj);
+
+        DataObj.Add('claimNo', ClaimHeader."Claim No.");
+        DataObj.Add('appointmentNo', ClaimHeader."Appointment No.");
+        DataObj.Add('patientNo', ClaimHeader."Patient No.");
+        DataObj.Add('patientName', ClaimHeader."Patient Name");
+        DataObj.Add('patientCrId', ClaimHeader."Patient CR ID");
+
+        DataObj.Add('consentRequestId', ClaimHeader."Consent Request ID");
+
+        DataObj.Add('authorizationId', ClaimHeader."Authorization ID");
+        DataObj.Add('authorizationCode', ClaimHeader."Authorization Code");
+        DataObj.Add('authorizationGuid', ClaimHeader."Authorization GUID");
+        DataObj.Add('authorizationStatus', ClaimHeader."Authorization Status");
+
+        DataObj.Add('visitId', ClaimHeader."Visit ID");
+        DataObj.Add('visitNumber', ClaimHeader."Visit Number");
+        DataObj.Add('visitStart', Format(ClaimHeader."Visit Start", 0, 9));
+        DataObj.Add('serviceType', ClaimHeader."Service Type");
+
+        DataObj.Add('schemeCode', ClaimHeader."Scheme Code");
+        DataObj.Add('schemeName', ClaimHeader."Scheme Name");
+
+        DataObj.Add('providerClaimNo', ClaimHeader."Provider Claim No.");
+        DataObj.Add('shaClaimId', ClaimHeader."SHA Claim ID");
+        DataObj.Add('shaClaimGuid', ClaimHeader."SHA Claim GUID");
+        DataObj.Add('subjectGuid', ClaimHeader."Subject GUID");
+
+        DataObj.Add('claimStatus', ClaimHeader."Claim Status");
+        DataObj.Add('processingStatus', Format(ClaimHeader."Processing Status"));
+        DataObj.Add('claimAmount', ClaimHeader."Claim Amount");
+        DataObj.Add('approvedAmount', ClaimHeader."Approved Amount");
+        DataObj.Add('rejectedAmount', ClaimHeader."Rejected Amount");
+
+        DataObj.Add('statusMessage', ClaimHeader."Status Message");
+
+        DataObj.Add('invoiceId', ClaimHeader."Invoice ID");
+        DataObj.Add('invoiceNumber', ClaimHeader."Invoice Number");
+
+        DataObj.Add('submittedAt', Format(ClaimHeader."Submitted At", 0, 9));
+        DataObj.Add('lastStatusUpdate', Format(ClaimHeader."Last Status Update", 0, 9));
+        DataObj.Add('createdAt', Format(ClaimHeader."Created At", 0, 9));
+        DataObj.Add('lastUpdatedAt', Format(ClaimHeader."Last Updated At", 0, 9));
+
+        exit(
+            BuildSuccessResponse(
+                MessageText,
+                DataObj));
+    end;
 
     local procedure HasSafeLastAppointmentPortal(
     PatientNo: Code[50]): Boolean
@@ -2065,7 +2158,58 @@ codeunit 90013 "SHA Portal Service"
             JsonText);
     end;
 
+    local procedure TryEvaluateSHADateTime(DateTimeText: Text; var ResultDateTime: DateTime): Boolean
+    var
+        CleanDateTimeText: Text;
+    begin
+        Clear(ResultDateTime);
 
+        if DateTimeText = '' then
+            exit(false);
+
+        if Evaluate(ResultDateTime, DateTimeText) then
+            exit(true);
+
+        CleanDateTimeText := DateTimeText;
+
+        CleanDateTimeText :=
+            DelChr(
+                CleanDateTimeText,
+                '=',
+                'Z');
+
+        CleanDateTimeText :=
+            ConvertStr(
+                CleanDateTimeText,
+                'T',
+                ' ');
+
+        if Evaluate(ResultDateTime, CleanDateTimeText) then
+            exit(true);
+
+        exit(false);
+    end;
+
+
+    local procedure GetOptionalBoolean(
+    JObject: JsonObject;
+    PropertyName: Text;
+    var Value: Boolean): Boolean
+var
+    JToken: JsonToken;
+begin
+    if not JObject.Get(PropertyName, JToken) then
+        exit(false);
+
+    if not JToken.IsValue() then
+        exit(false);
+
+    if JToken.AsValue().IsNull() then
+        exit(false);
+
+    Value := JToken.AsValue().AsBoolean();
+    exit(true);
+end;
     // ================================================================
     // SUCCESS RESPONSE
     // ================================================================
