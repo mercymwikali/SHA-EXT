@@ -3,7 +3,7 @@ namespace PTL.HMIS.SHA;
 using System.Utilities;
 using System.Reflection;
 
-codeunit 50001 "SHA Authorization Client"
+codeunit 90003 "SHA Authorization Client"
 {
     /// <summary>
     /// Creates a new authorization using the OTP strategy — standard outpatient/inpatient
@@ -26,7 +26,7 @@ codeunit 50001 "SHA Authorization Client"
         RequestJson.Add('interventions', InterventionArray);
 
         RequestJson.WriteTo(RequestBody);
-        exit(ShaHttpClient.SendJson('POST', GlobalDimension1Code, '/api/v1/claims/authorize', RequestBody, ResponseText, HttpStatusCode));
+        exit(ShaHttpClient.SendJson('POST',  '/api/v1/claims/authorize', RequestBody, ResponseText, HttpStatusCode));
     end;
 
     /// <summary>
@@ -64,7 +64,7 @@ codeunit 50001 "SHA Authorization Client"
         RequestJson.Add('work_station_id', WorkStationId);
 
         RequestJson.WriteTo(RequestBody);
-        exit(ShaHttpClient.SendJson('POST', GlobalDimension1Code, '/api/v1/claims/authorize', RequestBody, ResponseText, HttpStatusCode));
+        exit(ShaHttpClient.SendJson('POST',  '/api/v1/claims/authorize', RequestBody, ResponseText, HttpStatusCode));
     end;
 
     /// <summary>
@@ -82,7 +82,7 @@ codeunit 50001 "SHA Authorization Client"
             TypeHelper.UrlEncode(Guid));
         if BeneficiaryCode <> '' then
             RelativeEndpoint += '&beneficiary_code=' + TypeHelper.UrlEncode(BeneficiaryCode);
-        exit(ShaHttpClient.SendJson('GET', GlobalDimension1Code, RelativeEndpoint, '', ResponseText, HttpStatusCode));
+        exit(ShaHttpClient.SendJson('GET', RelativeEndpoint, '', ResponseText, HttpStatusCode));
     end;
 
     /// <summary>
@@ -95,7 +95,7 @@ codeunit 50001 "SHA Authorization Client"
         RelativeEndpoint: Text;
     begin
         RelativeEndpoint := StrSubstNo('/api/v1/claims/authorizations/%1/reject', TypeHelper.UrlEncode(ConsentToken));
-        exit(ShaHttpClient.SendJson('POST', GlobalDimension1Code, RelativeEndpoint, '', ResponseText, HttpStatusCode));
+        exit(ShaHttpClient.SendJson('POST',  RelativeEndpoint, '', ResponseText, HttpStatusCode));
     end;
 
     procedure TryGetGuid(ResponseText: Text; var Guid: Text): Boolean

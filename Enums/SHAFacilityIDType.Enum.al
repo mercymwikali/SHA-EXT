@@ -1,6 +1,6 @@
 namespace PTL.HMIS.SHA;
 
-enum 50009 "SHA Facility ID Type"
+enum 90009 "SHA Facility ID Type"
 {
     Extensible = true;
 

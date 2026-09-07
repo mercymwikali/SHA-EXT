@@ -1,6 +1,6 @@
 namespace PTL.HMIS.SHA;
 
-page 50005 "SHA Body Viewer"
+page 90005 "SHA Body Viewer"
 {
     Caption = 'SHA Body Viewer';
     PageType = StandardDialog;

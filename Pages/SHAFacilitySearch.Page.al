@@ -1,6 +1,6 @@
 namespace PTL.HMIS.SHA;
 
-page 50014 "SHA Facility Search"
+page 90008 "SHA Facility Search"
 {
     ApplicationArea = All;
     Caption = 'SHA Facility Search';

@@ -1,6 +1,6 @@
 namespace PTL.HMIS.SHA;
 
-page 50006 "SHA Patient Search"
+page 90012 "SHA Patient Search"
 {
     ApplicationArea = All;
     Caption = 'SHA Patient Search';

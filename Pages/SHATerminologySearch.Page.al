@@ -1,6 +1,6 @@
 namespace PTL.HMIS.SHA;
 
-page 50016 "SHA Terminology Search"
+page 90016 "SHA Terminology Search"
 {
     ApplicationArea = All;
     Caption = 'SHA Terminology Search';

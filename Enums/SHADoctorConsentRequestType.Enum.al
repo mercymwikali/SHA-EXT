@@ -1,6 +1,6 @@
 namespace PTL.HMIS.SHA;
 
-enum 50006 "SHA Doctor Consent Request Type"
+enum 90006 "SHA Doctor Consent Request Type"
 {
     Extensible = true;
 

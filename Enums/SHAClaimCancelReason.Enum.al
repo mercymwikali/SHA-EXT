@@ -1,6 +1,6 @@
 namespace PTL.HMIS.SHA;
 
-enum 50003 "SHA Claim Cancel Reason"
+enum 90003 "SHA Claim Cancel Reason"
 {
     Extensible = true;
 

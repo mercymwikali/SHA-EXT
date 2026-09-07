@@ -1,6 +1,6 @@
 namespace PTL.HMIS.SHA;
 
-enum 50010 "SHA Mode Of Arrival"
+enum 90010 "SHA Mode Of Arrival"
 {
     Extensible = true;
 

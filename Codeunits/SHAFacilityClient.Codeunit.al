@@ -3,7 +3,7 @@ namespace PTL.HMIS.SHA;
 using System.Reflection;
 using System.Utilities;
 
-codeunit 50008 "SHA Facility Client"
+codeunit 90004 "SHA Facility Client"
 {
     procedure SearchByIdentifier(GlobalDimension1Code: Code[20]; IdentifierType: Enum "SHA Facility ID Type"; Identifier: Text; var ResponseText: Text; var HttpStatusCode: Integer): Boolean
     var
@@ -16,7 +16,7 @@ codeunit 50008 "SHA Facility Client"
         RelativeEndpoint := StrSubstNo('/api/v1/facilities/search?identifier=%1&identifier-type=%2',
             TypeHelper.UrlEncode(Identifier),
             TypeHelper.UrlEncode(IDTypeToText));
-        exit(ShaHttpClient.SendJson('GET', GlobalDimension1Code, RelativeEndpoint, '', ResponseText, HttpStatusCode));
+        exit(ShaHttpClient.SendJson('GET', RelativeEndpoint, '', ResponseText, HttpStatusCode));
     end;
 
     procedure SearchByName(GlobalDimension1Code: Code[20]; FacilityName: Text; var ResponseText: Text; var HttpStatusCode: Integer): Boolean
@@ -26,7 +26,7 @@ codeunit 50008 "SHA Facility Client"
         RelativeEndpoint: Text;
     begin
         RelativeEndpoint := StrSubstNo('/api/v1/facilities/search?name=%1', TypeHelper.UrlEncode(FacilityName));
-        exit(ShaHttpClient.SendJson('GET', GlobalDimension1Code, RelativeEndpoint, '', ResponseText, HttpStatusCode));
+        exit(ShaHttpClient.SendJson('GET', RelativeEndpoint, '', ResponseText, HttpStatusCode));
     end;
 
     local procedure IdentifierTypeToText(IdentifierType: Enum "SHA Facility ID Type"): Text

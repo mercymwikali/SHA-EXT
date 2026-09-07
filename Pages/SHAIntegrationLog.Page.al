@@ -1,6 +1,6 @@
 namespace PTL.HMIS.SHA;
 
-page 50001 "SHA Integration Log"
+page 90009 "SHA Integration Log"
 {
     ApplicationArea = All;
     Caption = 'SHA Integration Log';

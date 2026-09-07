@@ -1,6 +1,6 @@
 namespace PTL.HMIS.SHA;
 
-enum 50004 "SHA Connection Status"
+enum 90004 "SHA Connection Status"
 {
     Extensible = true;
 

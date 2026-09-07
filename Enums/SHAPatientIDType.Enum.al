@@ -1,6 +1,6 @@
 namespace PTL.HMIS.SHA;
 
-enum 50012 "SHA Patient ID Type"
+enum 90012 "SHA Patient ID Type"
 {
     Extensible = true;
 

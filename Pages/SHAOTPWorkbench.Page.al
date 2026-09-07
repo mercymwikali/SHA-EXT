@@ -1,6 +1,6 @@
 namespace PTL.HMIS.SHA;
 
-page 50017 "SHA OTP Workbench"
+page 90011 "SHA OTP Workbench"
 {
     ApplicationArea = All;
     Caption = 'SHA OTP Workbench';

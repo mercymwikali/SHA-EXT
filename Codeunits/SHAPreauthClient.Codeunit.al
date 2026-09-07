@@ -3,7 +3,7 @@ namespace PTL.HMIS.SHA;
 using System.Utilities;
 using System.Reflection;
 
-codeunit 50014 "SHA Preauth Client"
+codeunit 90010 "SHA Preauth Client"
 {
     procedure FetchPreauth(GlobalDimension1Code: Code[20]; ConsentToken: Text; var ResponseText: Text; var HttpStatusCode: Integer): Boolean
     var
@@ -12,7 +12,7 @@ codeunit 50014 "SHA Preauth Client"
         RelativeEndpoint: Text;
     begin
         RelativeEndpoint := StrSubstNo('/api/v1/preauths?consent_token=%1', TypeHelper.UrlEncode(ConsentToken));
-        exit(ShaHttpClient.SendJson('GET', GlobalDimension1Code, RelativeEndpoint, '', ResponseText, HttpStatusCode));
+        exit(ShaHttpClient.SendJson('GET', RelativeEndpoint, '', ResponseText, HttpStatusCode));
     end;
 
     /// <summary>
@@ -51,7 +51,7 @@ codeunit 50014 "SHA Preauth Client"
             TextFields.Add(ExtraFieldKey, ExtraFields.Get(ExtraFieldKey));
 
         ShaHttpClient.BuildMultipartContent(TextFields, FileFieldName, FileName, FileContentType, FileInStream, Content);
-        exit(ShaHttpClient.SendMultipart('POST', GlobalDimension1Code, '/api/v1/preauths', Content, ResponseText, HttpStatusCode));
+        exit(ShaHttpClient.SendMultipart('POST',  '/api/v1/preauths', Content, ResponseText, HttpStatusCode));
     end;
 
     procedure CancelPreauth(GlobalDimension1Code: Code[20]; ConsentToken: Text; InterventionCode: Text; var ResponseText: Text; var HttpStatusCode: Integer): Boolean
@@ -63,7 +63,7 @@ codeunit 50014 "SHA Preauth Client"
         RequestJson.Add('consent_token', ConsentToken);
         RequestJson.Add('intervention_code', InterventionCode);
         RequestJson.WriteTo(RequestBody);
-        exit(ShaHttpClient.SendJson('POST', GlobalDimension1Code, '/api/v1/preauths/cancel', RequestBody, ResponseText, HttpStatusCode));
+        exit(ShaHttpClient.SendJson('POST',  '/api/v1/preauths/cancel', RequestBody, ResponseText, HttpStatusCode));
     end;
 
     procedure RemovePreauthDoctor(GlobalDimension1Code: Code[20]; ConsentToken: Text; InterventionCode: Text; PractitionerRegistrationNumber: Text; var ResponseText: Text; var HttpStatusCode: Integer): Boolean
@@ -76,7 +76,7 @@ codeunit 50014 "SHA Preauth Client"
         RequestJson.Add('intervention_code', InterventionCode);
         RequestJson.Add('practitioner_registration_number', PractitionerRegistrationNumber);
         RequestJson.WriteTo(RequestBody);
-        exit(ShaHttpClient.SendJson('DELETE', GlobalDimension1Code, '/api/v1/preauths/doctors', RequestBody, ResponseText, HttpStatusCode));
+        exit(ShaHttpClient.SendJson('DELETE',  '/api/v1/preauths/doctors', RequestBody, ResponseText, HttpStatusCode));
     end;
 
     /// <summary>
@@ -96,6 +96,6 @@ codeunit 50014 "SHA Preauth Client"
         RequestJson.WriteTo(RequestBody);
 
         RelativeEndpoint := StrSubstNo('/api/v1/preauths/diagnoses/%1', TypeHelper.UrlEncode(IcdCode));
-        exit(ShaHttpClient.SendJson('DELETE', GlobalDimension1Code, RelativeEndpoint, RequestBody, ResponseText, HttpStatusCode));
+        exit(ShaHttpClient.SendJson('DELETE', RelativeEndpoint, RequestBody, ResponseText, HttpStatusCode));
     end;
 }

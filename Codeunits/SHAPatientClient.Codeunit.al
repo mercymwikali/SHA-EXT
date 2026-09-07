@@ -3,7 +3,7 @@ namespace PTL.HMIS.SHA;
 using System.Reflection;
 using System.Utilities;
 
-codeunit 50013 "SHA Patient Client"
+codeunit 90009 "SHA Patient Client"
 {
     procedure Search(GlobalDimension1Code: Code[20]; IdentificationNumber: Text; IdentificationType: Enum "SHA Patient ID Type"; var ResponseText: Text; var HttpStatusCode: Integer): Boolean
     var
@@ -16,7 +16,7 @@ codeunit 50013 "SHA Patient Client"
         RelativeEndpoint := StrSubstNo('/api/v1/patients?identification_number=%1&identification_type=%2',
             TypeHelper.UrlEncode(IdentificationNumber),
             TypeHelper.UrlEncode(IDTypeToText));
-        exit(ShaHttpClient.SendJson('GET', GlobalDimension1Code, RelativeEndpoint, '', ResponseText, HttpStatusCode));
+        exit(ShaHttpClient.SendJson('GET', RelativeEndpoint, '', ResponseText, HttpStatusCode));
     end;
 
     /// <summary>

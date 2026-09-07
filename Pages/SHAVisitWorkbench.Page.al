@@ -1,6 +1,6 @@
 namespace PTL.HMIS.SHA;
 
-page 50009 "SHA Visit Workbench"
+page 90017 "SHA Visit Workbench"
 {
     ApplicationArea = All;
     Caption = 'SHA Visit Workbench';

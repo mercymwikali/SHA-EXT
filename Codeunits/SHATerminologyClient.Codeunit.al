@@ -3,7 +3,7 @@ namespace PTL.HMIS.SHA;
 using System.Reflection;
 using System.Utilities;
 
-codeunit 50017 "SHA Terminology Client"
+codeunit 90011 "SHA Terminology Client"
 {
     procedure SearchConcept(GlobalDimension1Code: Code[20]; Owner: Text; Source: Text; SearchText: Text; Limit: Integer; Offset: Integer; var ResponseText: Text; var HttpStatusCode: Integer): Boolean
     var
@@ -17,7 +17,7 @@ codeunit 50017 "SHA Terminology Client"
             TypeHelper.UrlEncode(SearchText),
             Limit,
             Offset);
-        exit(ShaHttpClient.SendJson('GET', GlobalDimension1Code, RelativeEndpoint, '', ResponseText, HttpStatusCode));
+        exit(ShaHttpClient.SendJson('GET', RelativeEndpoint, '', ResponseText, HttpStatusCode));
     end;
 
     procedure GetConceptMapping(GlobalDimension1Code: Code[20]; Owner: Text; Source: Text; FromConcept: Text; MapType: Text; var ResponseText: Text; var HttpStatusCode: Integer): Boolean
@@ -31,6 +31,6 @@ codeunit 50017 "SHA Terminology Client"
             TypeHelper.UrlEncode(Source),
             TypeHelper.UrlEncode(FromConcept),
             TypeHelper.UrlEncode(MapType));
-        exit(ShaHttpClient.SendJson('GET', GlobalDimension1Code, RelativeEndpoint, '', ResponseText, HttpStatusCode));
+        exit(ShaHttpClient.SendJson('GET', RelativeEndpoint, '', ResponseText, HttpStatusCode));
     end;
 }

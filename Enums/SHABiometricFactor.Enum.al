@@ -1,6 +1,6 @@
 namespace PTL.HMIS.SHA;
 
-enum 50001 "SHA Biometric Factor"
+enum 90001 "SHA Biometric Factor"
 {
     Extensible = true;
 

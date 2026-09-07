@@ -1,6 +1,6 @@
 namespace PTL.HMIS.SHA;
 
-page 50002 "SHA Setup"
+page 90014 "SHA Setup"
 {
     ApplicationArea = All;
     Caption = 'SHA Setup';

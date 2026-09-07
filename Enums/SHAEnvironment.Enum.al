@@ -1,6 +1,6 @@
 namespace PTL.HMIS.SHA;
 
-enum 50007 "SHA Environment"
+enum 90007 "SHA Environment"
 {
     Extensible = true;
 

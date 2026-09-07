@@ -1,6 +1,6 @@
 namespace PTL.HMIS.SHA;
 
-codeunit 50018 "SHA Visit Client"
+codeunit 90012 "SHA Visit Client"
 {
     /// <summary>
     /// Creates a new virtual claim/visit using the OTP strategy — the OTP was captured directly,
@@ -24,7 +24,7 @@ codeunit 50018 "SHA Visit Client"
         RequestJson.Add('otp', Otp);
 
         RequestJson.WriteTo(RequestBody);
-        exit(ShaHttpClient.SendJson('POST', GlobalDimension1Code, '/api/v1/claims/visit', RequestBody, ResponseText, HttpStatusCode));
+        exit(ShaHttpClient.SendJson('POST',  '/api/v1/claims/visit', RequestBody, ResponseText, HttpStatusCode));
     end;
 
     /// <summary>
@@ -51,7 +51,7 @@ codeunit 50018 "SHA Visit Client"
         RequestJson.Add('auth_guid', AuthorizationGuid);
 
         RequestJson.WriteTo(RequestBody);
-        exit(ShaHttpClient.SendJson('POST', GlobalDimension1Code, '/api/v1/claims/visit', RequestBody, ResponseText, HttpStatusCode));
+        exit(ShaHttpClient.SendJson('POST',  '/api/v1/claims/visit', RequestBody, ResponseText, HttpStatusCode));
     end;
 
     /// <summary>
@@ -69,7 +69,7 @@ codeunit 50018 "SHA Visit Client"
         RequestJson.Add('policy_number', PolicyNumber);
 
         RequestJson.WriteTo(RequestBody);
-        exit(ShaHttpClient.SendJson('POST', GlobalDimension1Code, '/api/v1/authorizations/covers', RequestBody, ResponseText, HttpStatusCode));
+        exit(ShaHttpClient.SendJson('POST',  '/api/v1/authorizations/covers', RequestBody, ResponseText, HttpStatusCode));
     end;
 
     /// <summary>

@@ -1,6 +1,6 @@
 namespace PTL.HMIS.SHA;
 
-enum 50014 "SHA Regulator"
+enum 90014 "SHA Regulator"
 {
     Extensible = true;
 

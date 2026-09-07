@@ -2,7 +2,7 @@ namespace PTL.HMIS.SHA;
 
 using System.Utilities;
 
-codeunit 50009 "SHA Http Client"
+codeunit 90005 "SHA Http Client"
 {
     var
         ShaAuthenticationMgt: Codeunit "SHA Authentication Mgt";
@@ -25,13 +25,13 @@ codeunit 50009 "SHA Http Client"
         LogConsentToken := '';
     end;
 
-    procedure SendJson(Method: Text; GlobalDimension1Code: Code[20]; RelativeEndpoint: Text; RequestBodyText: Text; var ResponseText: Text; var HttpStatusCode: Integer): Boolean
+    procedure SendJson(Method: Text; RelativeEndpoint: Text; RequestBodyText: Text; var ResponseText: Text; var HttpStatusCode: Integer): Boolean
     var
         Content: HttpContent;
         ContentHeaders: HttpHeaders;
     begin
         if RequestBodyText = '' then
-            exit(SendCore(Method, GlobalDimension1Code, RelativeEndpoint, Content, false, '', ResponseText, HttpStatusCode));
+            exit(SendCore(Method, RelativeEndpoint, Content, false, '', ResponseText, HttpStatusCode));
 
         Content.WriteFrom(RequestBodyText);
         Content.GetHeaders(ContentHeaders);
@@ -39,18 +39,14 @@ codeunit 50009 "SHA Http Client"
             ContentHeaders.Remove('Content-Type');
         ContentHeaders.Add('Content-Type', 'application/json');
 
-        exit(SendCore(Method, GlobalDimension1Code, RelativeEndpoint, Content, true, RequestBodyText, ResponseText, HttpStatusCode));
+        exit(SendCore(Method, RelativeEndpoint, Content, true, RequestBodyText, ResponseText, HttpStatusCode));
     end;
 
-    procedure SendMultipart(Method: Text; GlobalDimension1Code: Code[20]; RelativeEndpoint: Text; var Content: HttpContent; var ResponseText: Text; var HttpStatusCode: Integer): Boolean
+    procedure SendMultipart(Method: Text; RelativeEndpoint: Text; var Content: HttpContent; var ResponseText: Text; var HttpStatusCode: Integer): Boolean
     begin
-        exit(SendCore(Method, GlobalDimension1Code, RelativeEndpoint, Content, true, '<multipart/form-data body, not logged as text>', ResponseText, HttpStatusCode));
+        exit(SendCore(Method, RelativeEndpoint, Content, true, '<multipart/form-data body, not logged as text>', ResponseText, HttpStatusCode));
     end;
 
-    /// <summary>
-    /// Builds a single multipart/form-data HttpContent from a set of text fields and, optionally, one file part.
-    /// Pass an empty FileFieldName to build a text-only multipart body.
-    /// </summary>
     procedure BuildMultipartContent(TextFields: Dictionary of [Text, Text]; FileFieldName: Text; FileName: Text; FileContentType: Text; var FileInStream: InStream; var Content: HttpContent)
     var
         TempBlob: Codeunit "Temp Blob";
@@ -94,7 +90,7 @@ codeunit 50009 "SHA Http Client"
         ContentHeaders.Add('Content-Type', StrSubstNo('multipart/form-data; boundary=%1', Boundary));
     end;
 
-    local procedure SendCore(Method: Text; GlobalDimension1Code: Code[20]; RelativeEndpoint: Text; Content: HttpContent; HasContent: Boolean; RequestBodyForLog: Text; var ResponseText: Text; var HttpStatusCode: Integer): Boolean
+    local procedure SendCore(Method: Text; RelativeEndpoint: Text; Content: HttpContent; HasContent: Boolean; RequestBodyForLog: Text; var ResponseText: Text; var HttpStatusCode: Integer): Boolean
     var
         ShaSetup: Record "SHA Setup";
         Client: HttpClient;
@@ -111,11 +107,16 @@ codeunit 50009 "SHA Http Client"
         ErrorCategory: Enum "SHA Error Category";
         ErrorMessage: Text;
     begin
-        ShaSetup.Get(GlobalDimension1Code);
-        ShaSetup.TestField(Enabled, true);
-        ShaSetup.TestField("Base URL");
-        //ShaSetup.TestField("Facility FR Code");
+        // Retrieve setup and global dimension directly
+        ShaSetup.Reset();
+        ShaSetup.SetRange(Enabled, true);
 
+        if not ShaSetup.FindFirst() then
+            Error(
+                'No enabled SHA Setup has been configured.');
+
+        ShaSetup.TestField("Global Dimension 1 Code");
+        ShaSetup.TestField("Base URL");
         CorrelationId := CreateGuid();
         RequestStart := CurrentDateTime();
         HttpStatusCode := 0;
@@ -134,12 +135,14 @@ codeunit 50009 "SHA Http Client"
                 Request.Content(Content);
             Request.GetHeaders(RequestHeaders);
             RequestHeaders.Add('Accept', 'application/json');
-            RequestHeaders.Add('Authorization', 'Bearer ' + ShaAuthenticationMgt.GetAccessToken(GlobalDimension1Code));
 
-            // Required SHA Middleware Headers
-            // RequestHeaders.Add('X-Facility-Id', ShaSetup."Facility FR Code");
-            // RequestHeaders.Add('X-Facility-Id-Type', 'fr-code');
-
+            // Pass the dimension fetched from setup to Authentication Mgt
+            RequestHeaders.Add(
+                'Authorization',
+                'Bearer ' +
+                ShaAuthenticationMgt.GetAccessToken(
+                    ShaSetup."Global Dimension 1 Code"));
+                    
             Client.Timeout := ShaSetup."Timeout (Sec)" * 1000;
             Clear(Response);
             TransportOk := Client.Send(Request, Response);
@@ -160,7 +163,7 @@ codeunit 50009 "SHA Http Client"
                     ErrorMessage := '';
                 end else
                     if (HttpStatusCode = 401) and (AttemptNo = 1) then begin
-                        ShaAuthenticationMgt.RefreshAccessToken(GlobalDimension1Code);
+                        ShaAuthenticationMgt.RefreshAccessToken(ShaSetup."Global Dimension 1 Code");
                         RetryAllowed := true;
                     end else begin
                         ErrorCategory := CategorizeError(HttpStatusCode);
@@ -169,7 +172,8 @@ codeunit 50009 "SHA Http Client"
             end;
         end;
 
-        ShaIntegrationLogMgt.LogCall(CorrelationId, GlobalDimension1Code, RelativeEndpoint, Method,
+        // Log using the setup dimension code
+        ShaIntegrationLogMgt.LogCall(CorrelationId, ShaSetup."Global Dimension 1 Code", RelativeEndpoint, Method,
             RequestStart, RequestEnd, HttpStatusCode, ErrorCategory, ErrorMessage,
             LogPatientNo, LogAppointmentNo, LogConsentToken,
             RequestBodyForLog, ResponseText, ShaSetup."Log Request/Response Bodies");

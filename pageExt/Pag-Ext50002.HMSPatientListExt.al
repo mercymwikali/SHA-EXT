@@ -1,7 +1,7 @@
 namespace SHA.SHA;
 using PTL.HMIS.SHA;
 
-pageextension 50002 "HMS Patient List Ext" extends "HMS Patient List2"
+pageextension 90002 "HMS Patient List Ext" extends "HMS Patient List2"
 {
     actions
     {

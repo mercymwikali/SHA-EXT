@@ -14,15 +14,15 @@
       "id": "6303d39a-c7d1-4a0c-98d5-a07e908bf948",
       "name": "Hospital-System",
       "publisher": "AHS",
-      "version": "1.0.1.0"
+      "version": "1.0.1.4"
     }],
   "screenshots": [],
   "platform": "1.0.0.0",
   "application": "28.0.0.0",
   "idRanges": [
-    {
-            "from": 50000,
-            "to": 59999
+   {
+            "from": 90000,
+            "to": 99999
         }
   ],
   "target": "Cloud",

@@ -1,6 +1,6 @@
 namespace PTL.HMIS.SHA;
 
-page 50011 "SHA Preauth Workbench"
+page 90013 "SHA Preauth Workbench"
 {
     ApplicationArea = All;
     Caption = 'SHA Preauth Workbench';

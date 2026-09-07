@@ -1,6 +1,6 @@
 namespace PTL.HMIS.SHA;
 
-enum 50008 "SHA Error Category"
+enum 90008 "SHA Error Category"
 {
     Extensible = true;
 

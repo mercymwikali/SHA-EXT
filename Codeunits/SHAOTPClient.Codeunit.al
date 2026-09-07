@@ -3,7 +3,7 @@ namespace PTL.HMIS.SHA;
 using System.Utilities;
 using System.Reflection;
 
-codeunit 50012 "SHA OTP Client"
+codeunit 90008 "SHA OTP Client"
 {
     procedure GetPatientContacts(GlobalDimension1Code: Code[20]; PatientId: Text; var ResponseText: Text; var HttpStatusCode: Integer): Boolean
     var
@@ -12,7 +12,7 @@ codeunit 50012 "SHA OTP Client"
         RelativeEndpoint: Text;
     begin
         RelativeEndpoint := StrSubstNo('/api/v1/patients/contacts?patient_id=%1', TypeHelper.UrlEncode(PatientId));
-        exit(ShaHttpClient.SendJson('GET', GlobalDimension1Code, RelativeEndpoint, '', ResponseText, HttpStatusCode));
+        exit(ShaHttpClient.SendJson('GET', RelativeEndpoint, '', ResponseText, HttpStatusCode));
     end;
 
     /// <summary>
@@ -37,7 +37,7 @@ codeunit 50012 "SHA OTP Client"
             RequestJson.Add('contact_id', ContactId);
 
         RequestJson.WriteTo(RequestBody);
-        exit(ShaHttpClient.SendJson('POST', GlobalDimension1Code, '/api/v1/claims/otp', RequestBody, ResponseText, HttpStatusCode));
+        exit(ShaHttpClient.SendJson('POST', '/api/v1/claims/otp', RequestBody, ResponseText, HttpStatusCode));
     end;
 
     procedure SendOtpForDischarge(GlobalDimension1Code: Code[20]; ConsentToken: Text; PatientId: Text; var ResponseText: Text; var HttpStatusCode: Integer): Boolean
@@ -49,7 +49,7 @@ codeunit 50012 "SHA OTP Client"
         RequestJson.Add('consent_token', ConsentToken);
         RequestJson.Add('patient_id', PatientId);
         RequestJson.WriteTo(RequestBody);
-        exit(ShaHttpClient.SendJson('POST', GlobalDimension1Code, '/api/v1/claims/otp/discharge', RequestBody, ResponseText, HttpStatusCode));
+        exit(ShaHttpClient.SendJson('POST', '/api/v1/claims/otp/discharge', RequestBody, ResponseText, HttpStatusCode));
     end;
 
     /// <summary>
@@ -73,7 +73,7 @@ codeunit 50012 "SHA OTP Client"
         if QueryString <> '' then
             RelativeEndpoint += '?' + QueryString.TrimStart('&');
 
-        exit(ShaHttpClient.SendJson('GET', GlobalDimension1Code, RelativeEndpoint, '', ResponseText, HttpStatusCode));
+        exit(ShaHttpClient.SendJson('GET', RelativeEndpoint, '', ResponseText, HttpStatusCode));
     end;
 
     /// <summary>
@@ -104,7 +104,7 @@ codeunit 50012 "SHA OTP Client"
         TextFields.Add('facility_fr_code', FacilityFrCode);
 
         ShaHttpClient.BuildMultipartContent(TextFields, FileFieldName, FileName, FileContentType, FileInStream, Content);
-        exit(ShaHttpClient.SendMultipart('POST', GlobalDimension1Code, '/api/v1/patients/otp-whitelists', Content, ResponseText, HttpStatusCode));
+        exit(ShaHttpClient.SendMultipart('POST', '/api/v1/patients/otp-whitelists', Content, ResponseText, HttpStatusCode));
     end;
 
     local procedure ReasonTypeToText(ReasonType: Enum "SHA OTP Whitelist Reason"): Text

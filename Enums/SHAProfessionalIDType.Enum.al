@@ -1,6 +1,6 @@
 namespace PTL.HMIS.SHA;
 
-enum 50013 "SHA Professional ID Type"
+enum 90013 "SHA Professional ID Type"
 {
     Extensible = true;
 

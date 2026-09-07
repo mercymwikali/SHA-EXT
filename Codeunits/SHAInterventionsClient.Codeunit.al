@@ -1,6 +1,6 @@
 namespace PTL.HMIS.SHA;
 
-codeunit 50011 "SHA Interventions Client"
+codeunit 90007 "SHA Interventions Client"
 {
     /// <summary>
     /// Adds a new intervention to an existing claim. FacilityId/FacilityIdType are optional
@@ -20,7 +20,7 @@ codeunit 50011 "SHA Interventions Client"
             RequestJson.Add('facilityIDType', FacilityIdType);
 
         RequestJson.WriteTo(RequestBody);
-        exit(ShaHttpClient.SendJson('POST', GlobalDimension1Code, '/api/v1/claims/interventions', RequestBody, ResponseText, HttpStatusCode));
+        exit(ShaHttpClient.SendJson('POST', '/api/v1/claims/interventions', RequestBody, ResponseText, HttpStatusCode));
     end;
 
     procedure RestoreIntervention(GlobalDimension1Code: Code[20]; ConsentToken: Text; InterventionCode: Text; var ResponseText: Text; var HttpStatusCode: Integer): Boolean
@@ -32,7 +32,7 @@ codeunit 50011 "SHA Interventions Client"
         RequestJson.Add('consent_token', ConsentToken);
         RequestJson.Add('intervention_code', InterventionCode);
         RequestJson.WriteTo(RequestBody);
-        exit(ShaHttpClient.SendJson('POST', GlobalDimension1Code, '/api/v1/claims/interventions/restore', RequestBody, ResponseText, HttpStatusCode));
+        exit(ShaHttpClient.SendJson('POST', '/api/v1/claims/interventions/restore', RequestBody, ResponseText, HttpStatusCode));
     end;
 
     procedure RetireIntervention(GlobalDimension1Code: Code[20]; ConsentToken: Text; InterventionCode: Text; var ResponseText: Text; var HttpStatusCode: Integer): Boolean
@@ -44,7 +44,7 @@ codeunit 50011 "SHA Interventions Client"
         RequestJson.Add('consent_token', ConsentToken);
         RequestJson.Add('intervention_code', InterventionCode);
         RequestJson.WriteTo(RequestBody);
-        exit(ShaHttpClient.SendJson('POST', GlobalDimension1Code, '/api/v1/claims/interventions/retire', RequestBody, ResponseText, HttpStatusCode));
+        exit(ShaHttpClient.SendJson('POST', '/api/v1/claims/interventions/retire', RequestBody, ResponseText, HttpStatusCode));
     end;
 
     /// <summary>
@@ -67,6 +67,6 @@ codeunit 50011 "SHA Interventions Client"
             RequestJson.Add('bill_to', BillTo);
 
         RequestJson.WriteTo(RequestBody);
-        exit(ShaHttpClient.SendJson('POST', GlobalDimension1Code, '/api/v1/claims/interventions/switch', RequestBody, ResponseText, HttpStatusCode));
+        exit(ShaHttpClient.SendJson('POST', '/api/v1/claims/interventions/switch', RequestBody, ResponseText, HttpStatusCode));
     end;
 }

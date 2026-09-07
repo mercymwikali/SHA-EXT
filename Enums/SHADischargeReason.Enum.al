@@ -1,6 +1,6 @@
 namespace PTL.HMIS.SHA;
 
-enum 50005 "SHA Discharge Reason"
+enum 90005 "SHA Discharge Reason"
 {
     Extensible = true;
 

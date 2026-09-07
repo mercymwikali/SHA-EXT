@@ -1,6 +1,6 @@
 namespace PTL.HMIS.SHA;
 
-enum 50015 "SHA Service Type"
+enum 90015 "SHA Service Type"
 {
     Extensible = true;
 

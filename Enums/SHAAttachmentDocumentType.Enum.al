@@ -1,6 +1,6 @@
 namespace PTL.HMIS.SHA;
 
-enum 50000 "SHA Attachment Document Type"
+enum 90000 "SHA Attachment Document Type"
 {
     Extensible = true;
 

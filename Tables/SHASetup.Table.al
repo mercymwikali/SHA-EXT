@@ -2,7 +2,7 @@ namespace PTL.HMIS.SHA;
 
 using Microsoft.Finance.Dimension;
 
-table 50001 "SHA Setup"
+table 90001 "SHA Setup"
 {
     Caption = 'SHA Setup';
     DataClassification = ToBeClassified;

@@ -1,6 +1,6 @@
 // namespace SHA.SHA;
 
-// page 50022 "SHA Authorization Dialog"
+// page 90018 "SHA Authorization Dialog"
 // {
 //     ApplicationArea = All;
 //     Caption = 'SHA Patient Visit Consent & OTP Authorization';

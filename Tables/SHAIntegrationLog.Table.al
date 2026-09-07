@@ -2,7 +2,7 @@ namespace PTL.HMIS.SHA;
 
 using System.Security.AccessControl;
 
-table 50000 "SHA Integration Log"
+table 90000 "SHA Integration Log"
 {
     Caption = 'SHA Integration Log';
     DataClassification = SystemMetadata;

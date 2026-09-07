@@ -1,59 +1,92 @@
 namespace SHA.SHA;
 
-page 50019 "SHA Covered Sub-Benefits"
+page 90003 "SHA Covered Sub-Benefits"
 {
     ApplicationArea = All;
     Caption = 'SHA Covered Sub-Benefits';
     PageType = ListPart;
     SourceTable = "SHA Patient SubBenefit Cache";
-    
+    Editable = false;
+
     layout
     {
         area(content)
         {
-            repeater(Group)
+            repeater(SubBenefits)
             {
-                field("Parent Benefit Code"; Rec."Parent Benefit Code")
-                {
-                    ApplicationArea = All;
-                    ToolTip = 'Parent Benefit level category (e.g. Inpatient, Outpatient).';
-                }
-                field("Parent Benefit Name"; Rec."Parent Benefit Name")
-                {
-                    ApplicationArea = All;
-                    ToolTip = 'Name of the parent benefit group.';
-                }
                 field("Sub Benefit Code"; Rec."Sub Benefit Code")
                 {
                     ApplicationArea = All;
-                    ToolTip = 'Unique code for the specific service category.';
+                    Caption = 'Sub-Benefit Code';
                 }
+
                 field("Sub Benefit Name"; Rec."Sub Benefit Name")
                 {
                     ApplicationArea = All;
-                    ToolTip = 'Name of the sub-benefit service category.';
+                    Caption = 'Sub-Benefit';
                 }
+
+                field("Parent Benefit Code"; Rec."Parent Benefit Code")
+                {
+                    ApplicationArea = All;
+                    Caption = 'Parent Benefit Code';
+                }
+
+                field("Parent Benefit Name"; Rec."Parent Benefit Name")
+                {
+                    ApplicationArea = All;
+                    Caption = 'Parent Benefit';
+                }
+
+                field("Access Point"; Rec."Access Point")
+                {
+                    ApplicationArea = All;
+                    Caption = 'Access Point';
+                }
+
                 field(Fund; Rec.Fund)
                 {
                     ApplicationArea = All;
-                    ToolTip = 'Funding source (PHC, SHIF, ECCIF).';
+                    Caption = 'Fund';
                 }
-                field(Status; Rec.Status)
-                {
-                    ApplicationArea = All;
-                    ToolTip = 'Current status of the sub-benefit entitlement.';
-                }
-                field(Active; Rec.Active)
-                {
-                    ApplicationArea = All;
-                    ToolTip = 'Specifies whether this sub-benefit is active.';
-                }
+
                 field("Last Synced At"; Rec."Last Synced At")
                 {
                     ApplicationArea = All;
-                    ToolTip = 'Timestamp of when this benefit row was cached.';
+                    Caption = 'Last Synced At';
                 }
             }
         }
     }
+
+    procedure SetPatientAndBenefit(
+        PatientCRID: Code[50];
+        ParentBenefitCode: Code[50])
+    begin
+        Rec.Reset();
+
+        Rec.SetRange(
+            "Patient CR ID",
+            PatientCRID);
+
+        Rec.SetRange(
+            "Parent Benefit Code",
+            ParentBenefitCode);
+
+        CurrPage.Update(false);
+    end;
+
+    procedure GetSelectedSubBenefit(
+        var SubBenefitCode: Code[50];
+        var SubBenefitName: Text[250])
+    begin
+        SubBenefitCode := Rec."Sub Benefit Code";
+        SubBenefitName := Rec."Sub Benefit Name";
+    end;
+
+    procedure ClearFilter()
+    begin
+        Rec.Reset();
+        CurrPage.Update(false);
+    end;
 }

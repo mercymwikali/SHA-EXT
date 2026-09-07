@@ -1,4 +1,6 @@
-table 50004 "SHA Patient SubBenefit Cache"
+namespace SHA.SHA;
+
+table 90002 "SHA Patient SubBenefit Cache"
 {
     Caption = 'SHA Patient SubBenefit Cache';
     DataClassification = SystemMetadata;
@@ -9,35 +11,48 @@ table 50004 "SHA Patient SubBenefit Cache"
         {
             Caption = 'Patient CR ID';
         }
+
         field(2; "Sub Benefit Code"; Code[50])
         {
             Caption = 'Sub Benefit Code';
         }
+
         field(3; "Sub Benefit Name"; Text[250])
         {
             Caption = 'Sub Benefit Name';
         }
+
         field(4; "Parent Benefit Code"; Code[50])
         {
             Caption = 'Parent Benefit Code';
         }
+
         field(5; "Parent Benefit Name"; Text[250])
         {
             Caption = 'Parent Benefit Name';
         }
+
         field(6; Fund; Text[100])
         {
             Caption = 'Fund';
         }
-        field(7; Active; Boolean)
+
+        field(7; "Access Point"; Text[50])
         {
-            Caption = 'Active';
+            Caption = 'Access Point';
         }
+
         field(8; Status; Text[50])
         {
             Caption = 'Status';
         }
-        field(9; "Last Synced At"; DateTime)
+
+        field(9; Active; Boolean)
+        {
+            Caption = 'Active';
+        }
+
+        field(10; "Last Synced At"; DateTime)
         {
             Caption = 'Last Synced At';
             Editable = false;
@@ -46,9 +61,10 @@ table 50004 "SHA Patient SubBenefit Cache"
 
     keys
     {
-        key(PK; "Patient CR ID", "Sub Benefit Code")
+        key(PK; "Patient CR ID", "Parent Benefit Code", "Sub Benefit Code")
         {
             Clustered = true;
         }
     }
 }
+

@@ -3,7 +3,7 @@ namespace PTL.HMIS.SHA;
 using System.Reflection;
 using System.Utilities;
 
-codeunit 50000 "SHA Authentication Mgt"
+codeunit 90002 "SHA Authentication Mgt"
 {
     procedure GetAccessToken(GlobalDimension1Code: Code[20]): Text
     var

@@ -1,6 +1,6 @@
 namespace PTL.HMIS.SHA;
 
-enum 50011 "SHA OTP Whitelist Reason"
+enum 90011 "SHA OTP Whitelist Reason"
 {
     Extensible = true;
 

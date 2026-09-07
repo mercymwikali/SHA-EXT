@@ -1,6 +1,6 @@
 namespace PTL.HMIS.SHA;
 
-enum 50002 "SHA Brought By"
+enum 90002 "SHA Brought By"
 {
     Extensible = true;
 

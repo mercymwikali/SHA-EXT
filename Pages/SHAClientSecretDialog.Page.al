@@ -1,6 +1,6 @@
 namespace PTL.HMIS.SHA;
 
-page 50000 "SHA Client Secret Dialog"
+page 90006 "SHA Client Secret Dialog"
 {
     Caption = 'SHA Client Secret';
     PageType = StandardDialog;

@@ -1,6 +1,6 @@
 namespace PTL.HMIS.SHA;
 
-codeunit 50010 "SHA Integration Log Mgt"
+codeunit 90006 "SHA Integration Log Mgt"
 {
     procedure LogCall(CorrelationId: Guid; GlobalDimension1Code: Code[20]; Endpoint: Text; Method: Text; RequestStart: DateTime; RequestEnd: DateTime; HttpStatusCode: Integer; ErrorCategory: Enum "SHA Error Category"; ErrorMessage: Text; PatientNo: Code[20]; AppointmentNo: Code[20]; ConsentToken: Text; RequestBody: Text; ResponseBody: Text; LogBodies: Boolean)
     var
