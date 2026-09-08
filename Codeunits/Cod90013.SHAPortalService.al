@@ -2,6 +2,8 @@ namespace SHA.SHA;
 
 using PTL.HMIS.SHA;
 using Microsoft.Foundation.NoSeries;
+using System.Utilities;
+using System.Text;
 
 codeunit 90013 "SHA Portal Service"
 {
@@ -33,7 +35,7 @@ codeunit 90013 "SHA Portal Service"
         AppointmentNoText: Text;
         InterventionCodes: List of [Text];
         InterventionCodeText: Text;
-        InterventionCode: Code[50];
+        InterventionCode: Text;
 
 
         ExistingInterventionCodeText: Text;
@@ -44,6 +46,40 @@ codeunit 90013 "SHA Portal Service"
         BillFrom: Text;
         BillTo: Text;
 
+        // ============================================================
+        // DIAGNOSIS
+        // ============================================================
+
+        DiagnosisCodeText: Text;
+        DiagnosisCode: Code[50];
+        PractitionerNo: Text;
+        PractitionerIdType: Text;
+        PractitionerRegulationBody: Text;
+
+        // ============================================================
+        // CLAIM LINES
+        // ============================================================
+
+        ClaimLineEntryNo: Integer;
+        Quantity: Decimal;
+        UnitPrice: Decimal;
+        NewQuantity: Integer;
+        NewUnitPrice: Decimal;
+        ServiceName: Text;
+        ServiceIdentifier: Text;
+        PreviewResponse: Text;
+        ClaimGuid: Text;
+        ProviderClaimNo: Text;
+        // ============================================================
+        // CLAIM SUBMISSION
+        // ============================================================
+
+        DischargeReason: Text;
+        DischargeStatus: Text;
+        SubmissionNotes: Text;
+        BeneficiaryContactId: Text;
+        Appointment: Record "HMS Appointment Form Header";
+        ReturnedOTP: Text;
         AppointmentIntervention: Record "SHA Appointment Intervention";
         ShaApiManagement: Codeunit "SHA Api Management";
         ClaimProcessing: Codeunit "SHA Claim Processing";
@@ -57,7 +93,6 @@ codeunit 90013 "SHA Portal Service"
         ResponseMsg: Text;
 
         ConsentRequestId: Text;
-        ReturnedOTP: Text;
 
         VisitId: Text;
         VisitNumber: Text;
@@ -77,6 +112,17 @@ codeunit 90013 "SHA Portal Service"
         DependantObj: JsonObject;
 
         ServiceType: Enum "SHA Service Type";
+
+        Base64Convert: Codeunit "Base64 Convert";
+        TempAttachmentBlob: Codeunit "Temp Blob";
+        AttachmentOutStream: OutStream;
+        AttachmentInStream: InStream;
+
+        FileBase64: Text;
+        FileName: Text;
+        FileContentType: Text;
+        DocumentType: Text;
+        AttachmentId: Text;
     begin
         // ============================================================
         // VALIDATE JSON
@@ -531,7 +577,54 @@ codeunit 90013 "SHA Portal Service"
                             DataObj));
                 end;
 
+            // ========================================================
+            // SEND DISCHARGE OTP
+            // ========================================================
 
+            'senddischargeotp':
+                begin
+                    if not GetRequiredText(JObject, 'appointmentNo', AppointmentNoText) then
+                        exit(BuildErrorResponse('appointmentNo is required.'));
+
+                    AppointmentNo := CopyStr(AppointmentNoText, 1, MaxStrLen(AppointmentNo));
+
+                    if not Appointment.Get(AppointmentNo) then
+                        exit(BuildErrorResponse(
+                            StrSubstNo('Appointment %1 was not found.', AppointmentNo)));
+
+                    if Appointment."SHA Patient CR ID" = '' then
+                        exit(BuildErrorResponse(
+                            StrSubstNo('Appointment %1 does not have a SHA Patient CR ID.', AppointmentNo)));
+
+                    if Appointment."SHA Authorization Code" = '' then
+                        exit(BuildErrorResponse(
+                            StrSubstNo('Appointment %1 does not have a SHA Authorization Code.', AppointmentNo)));
+
+                    ResponseCode := 0;
+                    ResponseMsg := '';
+                    ReturnedOTP := '';
+
+                    if not ShaApiManagement.SendDischargeOTPRequest(
+                        Appointment."SHA Patient CR ID",
+                        Appointment."SHA Authorization Code",
+                        ResponseCode,
+                        ResponseMsg,
+                        ReturnedOTP)
+                    then
+                        exit(BuildErrorResponse(ResponseMsg));
+
+                    Clear(DataObj);
+
+                    DataObj.Add('appointmentNo', AppointmentNo);
+                    DataObj.Add('patientCrId', Appointment."SHA Patient CR ID");
+                    DataObj.Add('authorizationCode', Appointment."SHA Authorization Code");
+                    DataObj.Add('shaResponseCode', ResponseCode);
+
+                    // DEMO PURPOSE ONLY
+                    DataObj.Add('otp', ReturnedOTP);
+
+                    exit(BuildSuccessResponse(ResponseMsg, DataObj));
+                end;
             // ========================================================
             // START VISIT
             // ========================================================
@@ -744,121 +837,468 @@ codeunit 90013 "SHA Portal Service"
                             ResponseMsg,
                             DataObj));
                 end;
-// ========================================================
-// RETIRE SHA INTERVENTION
-// ========================================================
+            // ========================================================
+            // RETIRE SHA INTERVENTION
+            // ========================================================
 
-'retireintervention':
-    begin
-        if not GetRequiredText(JObject, 'appointmentNo', AppointmentNoText) then
-            exit(BuildErrorResponse('appointmentNo is required.'));
+            'retireintervention':
+                begin
+                    if not GetRequiredText(JObject, 'appointmentNo', AppointmentNoText) then
+                        exit(BuildErrorResponse('appointmentNo is required.'));
 
-        if not GetRequiredText(JObject, 'interventionCode', InterventionCodeText) then
-            exit(BuildErrorResponse('interventionCode is required.'));
+                    if not GetRequiredText(JObject, 'interventionCode', InterventionCodeText) then
+                        exit(BuildErrorResponse('interventionCode is required.'));
 
-        AppointmentNo := CopyStr(AppointmentNoText, 1, MaxStrLen(AppointmentNo));
-        InterventionCode := CopyStr(InterventionCodeText, 1, MaxStrLen(InterventionCode));
+                    AppointmentNo := CopyStr(AppointmentNoText, 1, MaxStrLen(AppointmentNo));
+                    InterventionCode := CopyStr(InterventionCodeText, 1, MaxStrLen(InterventionCode));
 
-        if not ClaimProcessing.RetireAppointmentIntervention(
-            AppointmentNo,
-            InterventionCode,
-            ResponseCode,
-            ResponseMsg)
-        then
-            exit(BuildErrorResponse(ResponseMsg));
+                    if not ClaimProcessing.RetireAppointmentIntervention(
+                        AppointmentNo,
+                        InterventionCode,
+                        ResponseCode,
+                        ResponseMsg)
+                    then
+                        exit(BuildErrorResponse(ResponseMsg));
 
-        Clear(DataObj);
-        DataObj.Add('appointmentNo', AppointmentNo);
-        DataObj.Add('interventionCode', InterventionCode);
-        DataObj.Add('lineStatus', 'RETIRED');
-        DataObj.Add('shaResponseCode', ResponseCode);
+                    Clear(DataObj);
+                    DataObj.Add('appointmentNo', AppointmentNo);
+                    DataObj.Add('interventionCode', InterventionCode);
+                    DataObj.Add('lineStatus', 'RETIRED');
+                    DataObj.Add('shaResponseCode', ResponseCode);
 
-        exit(BuildSuccessResponse(ResponseMsg, DataObj));
-    end;
-
-
-// ========================================================
-// RESTORE SHA INTERVENTION
-// ========================================================
-
-'restoreintervention':
-    begin
-        if not GetRequiredText(JObject, 'appointmentNo', AppointmentNoText) then
-            exit(BuildErrorResponse('appointmentNo is required.'));
-
-        if not GetRequiredText(JObject, 'interventionCode', InterventionCodeText) then
-            exit(BuildErrorResponse('interventionCode is required.'));
-
-        AppointmentNo := CopyStr(AppointmentNoText, 1, MaxStrLen(AppointmentNo));
-        InterventionCode := CopyStr(InterventionCodeText, 1, MaxStrLen(InterventionCode));
-
-        if not ClaimProcessing.RestoreAppointmentIntervention(
-            AppointmentNo,
-            InterventionCode,
-            ResponseCode,
-            ResponseMsg)
-        then
-            exit(BuildErrorResponse(ResponseMsg));
-
-        Clear(DataObj);
-        DataObj.Add('appointmentNo', AppointmentNo);
-        DataObj.Add('interventionCode', InterventionCode);
-        DataObj.Add('lineStatus', 'ACTIVE');
-        DataObj.Add('shaResponseCode', ResponseCode);
-
-        exit(BuildSuccessResponse(ResponseMsg, DataObj));
-    end;
+                    exit(BuildSuccessResponse(ResponseMsg, DataObj));
+                end;
 
 
-// ========================================================
-// SWITCH SHA INTERVENTION
-// ========================================================
+            // ========================================================
+            // RESTORE SHA INTERVENTION
+            // ========================================================
 
-'switchintervention':
-    begin
-        if not GetRequiredText(JObject, 'appointmentNo', AppointmentNoText) then
-            exit(BuildErrorResponse('appointmentNo is required.'));
+            'restoreintervention':
+                begin
+                    if not GetRequiredText(JObject, 'appointmentNo', AppointmentNoText) then
+                        exit(BuildErrorResponse('appointmentNo is required.'));
 
-        if not GetRequiredText(JObject, 'existingInterventionCode', ExistingInterventionCodeText) then
-            exit(BuildErrorResponse('existingInterventionCode is required.'));
+                    if not GetRequiredText(JObject, 'interventionCode', InterventionCodeText) then
+                        exit(BuildErrorResponse('interventionCode is required.'));
 
-        if not GetRequiredText(JObject, 'newInterventionCode', NewInterventionCodeText) then
-            exit(BuildErrorResponse('newInterventionCode is required.'));
+                    AppointmentNo := CopyStr(AppointmentNoText, 1, MaxStrLen(AppointmentNo));
+                    InterventionCode := CopyStr(InterventionCodeText, 1, MaxStrLen(InterventionCode));
 
-        AppointmentNo := CopyStr(AppointmentNoText, 1, MaxStrLen(AppointmentNo));
-        ExistingInterventionCode := CopyStr(ExistingInterventionCodeText, 1, MaxStrLen(ExistingInterventionCode));
-        NewInterventionCode := CopyStr(NewInterventionCodeText, 1, MaxStrLen(NewInterventionCode));
+                    if not ClaimProcessing.RestoreAppointmentIntervention(
+                        AppointmentNo,
+                        InterventionCode,
+                        ResponseCode,
+                        ResponseMsg)
+                    then
+                        exit(BuildErrorResponse(ResponseMsg));
 
-        RetainBillItems := false;
-        BillFrom := '';
-        BillTo := '';
+                    Clear(DataObj);
+                    DataObj.Add('appointmentNo', AppointmentNo);
+                    DataObj.Add('interventionCode', InterventionCode);
+                    DataObj.Add('lineStatus', 'ACTIVE');
+                    DataObj.Add('shaResponseCode', ResponseCode);
 
-        GetOptionalBoolean(JObject, 'retainBillItems', RetainBillItems);
-        GetOptionalText(JObject, 'billFrom', BillFrom);
-        GetOptionalText(JObject, 'billTo', BillTo);
+                    exit(BuildSuccessResponse(ResponseMsg, DataObj));
+                end;
 
-        if not ClaimProcessing.SwitchAppointmentIntervention(
-            AppointmentNo,
-            ExistingInterventionCode,
-            NewInterventionCode,
-            RetainBillItems,
-            BillFrom,
-            BillTo,
-            ResponseCode,
-            ResponseMsg)
-        then
-            exit(BuildErrorResponse(ResponseMsg));
 
-        Clear(DataObj);
-        DataObj.Add('appointmentNo', AppointmentNo);
-        DataObj.Add('existingInterventionCode', ExistingInterventionCode);
-        DataObj.Add('newInterventionCode', NewInterventionCode);
-        DataObj.Add('retainBillItems', RetainBillItems);
-        DataObj.Add('shaResponseCode', ResponseCode);
+            // ========================================================
+            // SWITCH SHA INTERVENTION
+            // ========================================================
 
-        exit(BuildSuccessResponse(ResponseMsg, DataObj));
-    end;
+            'switchintervention':
+                begin
+                    if not GetRequiredText(JObject, 'appointmentNo', AppointmentNoText) then
+                        exit(BuildErrorResponse('appointmentNo is required.'));
 
+                    if not GetRequiredText(JObject, 'existingInterventionCode', ExistingInterventionCodeText) then
+                        exit(BuildErrorResponse('existingInterventionCode is required.'));
+
+                    if not GetRequiredText(JObject, 'newInterventionCode', NewInterventionCodeText) then
+                        exit(BuildErrorResponse('newInterventionCode is required.'));
+
+                    AppointmentNo := CopyStr(AppointmentNoText, 1, MaxStrLen(AppointmentNo));
+                    ExistingInterventionCode := CopyStr(ExistingInterventionCodeText, 1, MaxStrLen(ExistingInterventionCode));
+                    NewInterventionCode := CopyStr(NewInterventionCodeText, 1, MaxStrLen(NewInterventionCode));
+
+                    RetainBillItems := false;
+                    BillFrom := '';
+                    BillTo := '';
+
+                    GetOptionalBoolean(JObject, 'retainBillItems', RetainBillItems);
+                    GetOptionalText(JObject, 'billFrom', BillFrom);
+                    GetOptionalText(JObject, 'billTo', BillTo);
+
+                    if not ClaimProcessing.SwitchAppointmentIntervention(
+                        AppointmentNo,
+                        ExistingInterventionCode,
+                        NewInterventionCode,
+                        RetainBillItems,
+                        BillFrom,
+                        BillTo,
+                        ResponseCode,
+                        ResponseMsg)
+                    then
+                        exit(BuildErrorResponse(ResponseMsg));
+
+                    Clear(DataObj);
+                    DataObj.Add('appointmentNo', AppointmentNo);
+                    DataObj.Add('existingInterventionCode', ExistingInterventionCode);
+                    DataObj.Add('newInterventionCode', NewInterventionCode);
+                    DataObj.Add('retainBillItems', RetainBillItems);
+                    DataObj.Add('shaResponseCode', ResponseCode);
+
+                    exit(BuildSuccessResponse(ResponseMsg, DataObj));
+                end;
+            // ========================================================
+            // ADD SHA CLAIM DIAGNOSIS
+            // ========================================================
+
+            'submitshadiagnosis':
+                begin
+                    if not GetRequiredText(JObject, 'appointmentNo', AppointmentNoText) then
+                        exit(BuildErrorResponse('appointmentNo is required.'));
+
+                    if not GetRequiredText(JObject, 'diagnosisCode', DiagnosisCodeText) then
+                        exit(BuildErrorResponse('diagnosisCode is required.'));
+
+                    if not GetRequiredText(JObject, 'interventionCode', InterventionCodeText) then
+                        exit(BuildErrorResponse('interventionCode is required.'));
+
+                    AppointmentNo := CopyStr(AppointmentNoText, 1, MaxStrLen(AppointmentNo));
+                    DiagnosisCode := CopyStr(DiagnosisCodeText, 1, MaxStrLen(DiagnosisCode));
+                    InterventionCode := CopyStr(InterventionCodeText, 1, MaxStrLen(InterventionCode));
+
+                    PractitionerNo := '';
+                    PractitionerIdType := '';
+                    PractitionerRegulationBody := '';
+
+                    GetOptionalText(JObject, 'practitionerIdentificationNumber', PractitionerNo);
+                    GetOptionalText(JObject, 'practitionerIdentificationType', PractitionerIdType);
+                    GetOptionalText(JObject, 'practitionerRegulationBody', PractitionerRegulationBody);
+
+                    if not ClaimProcessing.AddClaimDiagnosis(
+                        AppointmentNo,
+                        DiagnosisCode,
+                        InterventionCode,
+                        PractitionerNo,
+                        PractitionerIdType,
+                        PractitionerRegulationBody,
+                        ResponseCode,
+                        ResponseMsg)
+                    then
+                        exit(BuildErrorResponse(ResponseMsg));
+
+                    Clear(DataObj);
+                    DataObj.Add('appointmentNo', AppointmentNo);
+                    DataObj.Add('diagnosisCode', DiagnosisCode);
+                    DataObj.Add('interventionCode', InterventionCode);
+                    DataObj.Add('status', 'SUBMITTED');
+                    DataObj.Add('shaResponseCode', ResponseCode);
+
+                    exit(BuildSuccessResponse(ResponseMsg, DataObj));
+                end;
+
+
+            // ========================================================
+            // REMOVE SHA CLAIM DIAGNOSIS
+            // ========================================================
+
+            'removeshadiagnosis':
+                begin
+                    if not GetRequiredText(JObject, 'appointmentNo', AppointmentNoText) then
+                        exit(BuildErrorResponse('appointmentNo is required.'));
+
+                    if not GetRequiredText(JObject, 'diagnosisCode', DiagnosisCodeText) then
+                        exit(BuildErrorResponse('diagnosisCode is required.'));
+
+                    if not GetRequiredText(JObject, 'interventionCode', InterventionCodeText) then
+                        exit(BuildErrorResponse('interventionCode is required.'));
+
+                    AppointmentNo := CopyStr(AppointmentNoText, 1, MaxStrLen(AppointmentNo));
+                    DiagnosisCode := CopyStr(DiagnosisCodeText, 1, MaxStrLen(DiagnosisCode));
+                    InterventionCode := CopyStr(InterventionCodeText, 1, MaxStrLen(InterventionCode));
+
+                    if not ClaimProcessing.RemoveClaimDiagnosis(
+                        AppointmentNo,
+                        DiagnosisCode,
+                        InterventionCode,
+                        ResponseCode,
+                        ResponseMsg)
+                    then
+                        exit(BuildErrorResponse(ResponseMsg));
+
+                    Clear(DataObj);
+                    DataObj.Add('appointmentNo', AppointmentNo);
+                    DataObj.Add('diagnosisCode', DiagnosisCode);
+                    DataObj.Add('interventionCode', InterventionCode);
+                    DataObj.Add('status', 'REMOVED');
+                    DataObj.Add('shaResponseCode', ResponseCode);
+
+                    exit(BuildSuccessResponse(ResponseMsg, DataObj));
+                end;
+
+
+            // ========================================================
+            // ADD SHA BILLABLE CLAIM LINE
+            // ========================================================
+
+            'addclaimline':
+                begin
+                    if not GetRequiredText(JObject, 'appointmentNo', AppointmentNoText) then
+                        exit(BuildErrorResponse('appointmentNo is required.'));
+
+                    if not GetRequiredText(JObject, 'interventionCode', InterventionCodeText) then
+                        exit(BuildErrorResponse('interventionCode is required.'));
+
+                    if not GetRequiredDecimal(JObject, 'quantity', Quantity) then
+                        exit(BuildErrorResponse('quantity is required and must be numeric.'));
+
+                    if not GetRequiredDecimal(JObject, 'unitPrice', UnitPrice) then
+                        exit(BuildErrorResponse('unitPrice is required and must be numeric.'));
+
+                    AppointmentNo := CopyStr(AppointmentNoText, 1, MaxStrLen(AppointmentNo));
+                    InterventionCode := CopyStr(InterventionCodeText, 1, MaxStrLen(InterventionCode));
+
+                    ServiceName := '';
+                    ServiceIdentifier := '';
+                    PractitionerNo := '';
+                    PractitionerIdType := '';
+                    PractitionerRegulationBody := '';
+
+                    GetOptionalText(JObject, 'serviceName', ServiceName);
+                    GetOptionalText(JObject, 'serviceIdentifier', ServiceIdentifier);
+                    GetOptionalText(JObject, 'practitionerIdentificationNumber', PractitionerNo);
+                    GetOptionalText(JObject, 'practitionerIdentificationType', PractitionerIdType);
+                    GetOptionalText(JObject, 'practitionerRegulationBody', PractitionerRegulationBody);
+
+                    if not ClaimProcessing.AddClaimLine(
+                        AppointmentNo,
+                        InterventionCode,
+                        Quantity,
+                        UnitPrice,
+                        ServiceName,
+                        ServiceIdentifier,
+                        PractitionerNo,
+                        PractitionerIdType,
+                        PractitionerRegulationBody,
+                        ResponseCode,
+                        ResponseMsg)
+                    then
+                        exit(BuildErrorResponse(ResponseMsg));
+
+                    Clear(DataObj);
+                    DataObj.Add('appointmentNo', AppointmentNo);
+                    DataObj.Add('interventionCode', InterventionCode);
+                    DataObj.Add('quantity', Quantity);
+                    DataObj.Add('unitPrice', UnitPrice);
+                    DataObj.Add('serviceName', ServiceName);
+                    DataObj.Add('serviceIdentifier', ServiceIdentifier);
+                    DataObj.Add('status', 'SUBMITTED');
+                    DataObj.Add('shaResponseCode', ResponseCode);
+
+                    exit(BuildSuccessResponse(ResponseMsg, DataObj));
+                end;
+
+
+            // ========================================================
+            // REMOVE SHA BILLABLE CLAIM LINE
+            // ========================================================
+
+            'removeclaimline':
+                begin
+                    if not GetRequiredText(JObject, 'appointmentNo', AppointmentNoText) then
+                        exit(BuildErrorResponse('appointmentNo is required.'));
+
+                    ClaimLineEntryNo := GetOptionalInteger(JObject, 'claimLineEntryNo');
+
+                    if ClaimLineEntryNo = 0 then
+                        exit(BuildErrorResponse('claimLineEntryNo is required.'));
+
+                    AppointmentNo := CopyStr(AppointmentNoText, 1, MaxStrLen(AppointmentNo));
+
+                    if not ClaimProcessing.RemoveClaimLine(
+                        AppointmentNo,
+                        ClaimLineEntryNo,
+                        ResponseCode,
+                        ResponseMsg)
+                    then
+                        exit(BuildErrorResponse(ResponseMsg));
+
+                    Clear(DataObj);
+                    DataObj.Add('appointmentNo', AppointmentNo);
+                    DataObj.Add('claimLineEntryNo', ClaimLineEntryNo);
+                    DataObj.Add('status', 'REMOVED');
+                    DataObj.Add('shaResponseCode', ResponseCode);
+
+                    exit(BuildSuccessResponse(ResponseMsg, DataObj));
+                end;
+
+
+            // ========================================================
+            // EDIT SHA BILLABLE CLAIM LINE
+            // ========================================================
+
+            'editclaimline':
+                begin
+                    if not GetRequiredText(JObject, 'appointmentNo', AppointmentNoText) then
+                        exit(BuildErrorResponse('appointmentNo is required.'));
+
+                    ClaimLineEntryNo := GetOptionalInteger(JObject, 'claimLineEntryNo');
+
+                    if ClaimLineEntryNo = 0 then
+                        exit(BuildErrorResponse('claimLineEntryNo is required.'));
+
+                    NewQuantity := GetOptionalInteger(JObject, 'quantity');
+
+                    if NewQuantity <= 0 then
+                        exit(BuildErrorResponse('quantity is required and must be greater than zero.'));
+
+                    if not GetRequiredDecimal(JObject, 'unitPrice', NewUnitPrice) then
+                        exit(BuildErrorResponse('unitPrice is required and must be numeric.'));
+
+                    AppointmentNo := CopyStr(AppointmentNoText, 1, MaxStrLen(AppointmentNo));
+
+                    if not ClaimProcessing.EditClaimLine(
+                        AppointmentNo,
+                        ClaimLineEntryNo,
+                        NewQuantity,
+                        NewUnitPrice,
+                        ResponseCode,
+                        ResponseMsg)
+                    then
+                        exit(BuildErrorResponse(ResponseMsg));
+
+                    Clear(DataObj);
+                    DataObj.Add('appointmentNo', AppointmentNo);
+                    DataObj.Add('claimLineEntryNo', ClaimLineEntryNo);
+                    DataObj.Add('quantity', NewQuantity);
+                    DataObj.Add('unitPrice', NewUnitPrice);
+                    DataObj.Add('status', 'EDITED');
+                    DataObj.Add('shaResponseCode', ResponseCode);
+
+                    exit(BuildSuccessResponse(ResponseMsg, DataObj));
+                end;
+
+
+            // ========================================================
+            // SUBMIT STANDARD SHA CLAIM USING OTP
+            // ========================================================
+
+            'submitshaclaim':
+                begin
+                    if not GetRequiredText(JObject, 'appointmentNo', AppointmentNoText) then
+                        exit(BuildErrorResponse('appointmentNo is required.'));
+
+                    if not GetRequiredText(JObject, 'invoiceNumber', InvoiceNumber) then
+                        exit(BuildErrorResponse('invoiceNumber is required.'));
+
+                    if not GetRequiredText(JObject, 'dischargeReason', DischargeReason) then
+                        exit(BuildErrorResponse('dischargeReason is required.'));
+
+                    if not GetRequiredText(JObject, 'otp', OTP) then
+                        exit(BuildErrorResponse('otp is required.'));
+
+                    AppointmentNo := CopyStr(AppointmentNoText, 1, MaxStrLen(AppointmentNo));
+
+                    DischargeStatus := 'FULL';
+                    SubmissionNotes := '';
+                    BeneficiaryContactId := '';
+
+                    GetOptionalText(JObject, 'dischargeStatus', DischargeStatus);
+                    GetOptionalText(JObject, 'notes', SubmissionNotes);
+                    GetOptionalText(JObject, 'beneficiaryContactId', BeneficiaryContactId);
+
+                    if not ClaimProcessing.SubmitStandardClaimWithOtp(
+                        AppointmentNo,
+                        InvoiceNumber,
+                        DischargeReason,
+                        DischargeStatus,
+                        SubmissionNotes,
+                        OTP,
+                        BeneficiaryContactId,
+                        ResponseCode,
+                        ResponseMsg)
+                    then
+                        exit(BuildErrorResponse(ResponseMsg));
+
+                    if ClaimProcessing.GetClaimByAppointment(AppointmentNo, ClaimHeader) then begin
+                        Clear(DataObj);
+
+                        DataObj.Add('claimNo', ClaimHeader."Claim No.");
+                        DataObj.Add('appointmentNo', AppointmentNo);
+                        DataObj.Add('claimStatus', ClaimHeader."Claim Status");
+                        DataObj.Add('processingStatus', Format(ClaimHeader."Processing Status"));
+                        DataObj.Add('invoiceId', ClaimHeader."Invoice ID");
+                        DataObj.Add('invoiceNumber', ClaimHeader."Invoice Number");
+                        DataObj.Add('dischargeReason', ClaimHeader."Discharge Reason");
+                        DataObj.Add('dischargeStatus', ClaimHeader."Discharge Status");
+                        DataObj.Add('workflowState', ClaimHeader."Workflow State");
+                        DataObj.Add('claimAuthStatus', ClaimHeader."Claim Auth Status");
+                        DataObj.Add('referenceNumber', ClaimHeader."Reference Number");
+                        DataObj.Add('totalClaimAmount', ClaimHeader."Total Claim Amount");
+                        DataObj.Add('totalClaimNetAmount', ClaimHeader."Total Claim Net Amount");
+                        DataObj.Add('submittedAt', Format(ClaimHeader."Submitted At", 0, 9));
+                        DataObj.Add('shaResponseCode', ResponseCode);
+
+                        exit(BuildSuccessResponse(ResponseMsg, DataObj));
+                    end;
+
+                    Clear(DataObj);
+                    DataObj.Add('appointmentNo', AppointmentNo);
+                    DataObj.Add('dischargeStatus', DischargeStatus);
+                    DataObj.Add('shaResponseCode', ResponseCode);
+
+                    exit(BuildSuccessResponse(ResponseMsg, DataObj));
+                end;
+
+
+            // ========================================================
+            // FINALISE PARTIAL SHA CLAIM
+            // ========================================================
+
+            'finalisepartialclaim':
+                begin
+                    if not GetRequiredText(JObject, 'appointmentNo', AppointmentNoText) then
+                        exit(BuildErrorResponse('appointmentNo is required.'));
+
+                    AppointmentNo := CopyStr(AppointmentNoText, 1, MaxStrLen(AppointmentNo));
+
+                    if not ClaimProcessing.FinalisePartialClaim(
+                        AppointmentNo,
+                        ResponseCode,
+                        ResponseMsg)
+                    then
+                        exit(BuildErrorResponse(ResponseMsg));
+
+                    if ClaimProcessing.GetClaimByAppointment(AppointmentNo, ClaimHeader) then begin
+                        Clear(DataObj);
+
+                        DataObj.Add('claimNo', ClaimHeader."Claim No.");
+                        DataObj.Add('appointmentNo', AppointmentNo);
+                        DataObj.Add('claimStatus', ClaimHeader."Claim Status");
+                        DataObj.Add('dischargeStatus', ClaimHeader."Discharge Status");
+                        DataObj.Add('workflowState', ClaimHeader."Workflow State");
+                        DataObj.Add('claimAuthStatus', ClaimHeader."Claim Auth Status");
+                        DataObj.Add('referenceNumber', ClaimHeader."Reference Number");
+                        DataObj.Add('invoiceId', ClaimHeader."Invoice ID");
+                        DataObj.Add('invoiceNumber', ClaimHeader."Invoice Number");
+                        DataObj.Add('totalClaimAmount', ClaimHeader."Total Claim Amount");
+                        DataObj.Add('totalClaimNetAmount', ClaimHeader."Total Claim Net Amount");
+                        DataObj.Add('submittedAt', Format(ClaimHeader."Submitted At", 0, 9));
+                        DataObj.Add('shaResponseCode', ResponseCode);
+
+                        exit(BuildSuccessResponse(ResponseMsg, DataObj));
+                    end;
+
+                    Clear(DataObj);
+                    DataObj.Add('appointmentNo', AppointmentNo);
+                    DataObj.Add('dischargeStatus', 'FULL');
+                    DataObj.Add('shaResponseCode', ResponseCode);
+
+                    exit(BuildSuccessResponse(ResponseMsg, DataObj));
+                end;
             // ========================================================
             // GET SHA CLAIM
             // ========================================================
@@ -882,13 +1322,237 @@ codeunit 90013 "SHA Portal Service"
                             ClaimHeader,
                             'SHA claim fetched successfully.'));
                 end;
+            // ========================================================
+            // RESUBMIT SHA CLAIM LINE
+            // ========================================================
 
+            // ========================================================
+            // RESUBMIT SHA CLAIM LINE
+            // ========================================================
+
+            'resubmitclaimline':
+                begin
+                    if not GetRequiredText(JObject, 'appointmentNo', AppointmentNoText) then
+                        exit(BuildErrorResponse('appointmentNo is required.'));
+
+                    ClaimLineEntryNo := GetOptionalInteger(JObject, 'claimLineEntryNo');
+
+                    if ClaimLineEntryNo = 0 then
+                        exit(BuildErrorResponse('claimLineEntryNo is required.'));
+
+                    AppointmentNo := CopyStr(AppointmentNoText, 1, MaxStrLen(AppointmentNo));
+
+                    if not ClaimProcessing.ResubmitClaimLine(
+                        AppointmentNo,
+                        ClaimLineEntryNo,
+                        ResponseCode,
+                        ResponseMsg)
+                    then
+                        exit(BuildErrorResponse(ResponseMsg));
+
+                    Clear(DataObj);
+                    DataObj.Add('appointmentNo', AppointmentNo);
+                    DataObj.Add('claimLineEntryNo', ClaimLineEntryNo);
+                    DataObj.Add('status', 'RESUBMITTED');
+                    DataObj.Add('shaResponseCode', ResponseCode);
+
+                    exit(BuildSuccessResponse(ResponseMsg, DataObj));
+                end;
+
+
+            // ========================================================
+            // PREVIEW PROVIDER CLAIM
+            // ========================================================
+
+            'previewproviderclaim':
+                begin
+                    if not GetRequiredText(JObject, 'appointmentNo', AppointmentNoText) then
+                        exit(BuildErrorResponse('appointmentNo is required.'));
+
+                    AppointmentNo := CopyStr(AppointmentNoText, 1, MaxStrLen(AppointmentNo));
+
+                    PreviewResponse := '';
+                    ResponseCode := 0;
+                    ResponseMsg := '';
+
+                    if not ClaimProcessing.PreviewProviderClaim(
+                        AppointmentNo,
+                        PreviewResponse,
+                        ResponseCode,
+                        ResponseMsg)
+                    then
+                        exit(BuildErrorResponse(ResponseMsg));
+
+                    exit(
+                        BuildPreviewResponse(
+                            PreviewResponse,
+                            ResponseMsg,
+                            ResponseCode));
+                end;
+
+
+            // ========================================================
+            // PREVIEW PAYER CLAIM
+            // ========================================================
+
+            'previewpayerclaim':
+                begin
+                    ClaimGuid := '';
+                    ProviderClaimNo := '';
+
+                    GetOptionalText(JObject, 'claimGuid', ClaimGuid);
+                    GetOptionalText(JObject, 'providerClaimNo', ProviderClaimNo);
+
+                    if (ClaimGuid = '') and (ProviderClaimNo = '') then
+                        exit(BuildErrorResponse('claimGuid or providerClaimNo is required.'));
+
+                    if (ClaimGuid <> '') and (ProviderClaimNo <> '') then
+                        exit(BuildErrorResponse('Provide either claimGuid or providerClaimNo, not both.'));
+
+                    PreviewResponse := '';
+                    ResponseCode := 0;
+                    ResponseMsg := '';
+
+                    if not ClaimProcessing.PreviewPayerClaim(
+                        ClaimGuid,
+                        ProviderClaimNo,
+                        PreviewResponse,
+                        ResponseCode,
+                        ResponseMsg)
+                    then
+                        exit(BuildErrorResponse(ResponseMsg));
+
+                    exit(
+                        BuildPreviewResponse(
+                            PreviewResponse,
+                            ResponseMsg,
+                            ResponseCode));
+                end;
+
+            // ========================================================
+            // ADD CLAIM ATTACHMENT
+            // ========================================================
+
+            'addclaimattachment':
+                begin
+                    if not GetRequiredText(JObject, 'appointmentNo', AppointmentNoText) then
+                        exit(BuildErrorResponse('appointmentNo is required.'));
+
+                    if not GetRequiredText(JObject, 'interventionCode', InterventionCode) then
+                        exit(BuildErrorResponse('interventionCode is required.'));
+
+                    if not GetRequiredText(JObject, 'documentType', DocumentType) then
+                        exit(BuildErrorResponse('documentType is required.'));
+
+                    if not GetRequiredText(JObject, 'fileName', FileName) then
+                        exit(BuildErrorResponse('fileName is required.'));
+
+                    if not GetRequiredText(JObject, 'fileBase64', FileBase64) then
+                        exit(BuildErrorResponse('fileBase64 is required.'));
+
+                    FileContentType := '';
+                    GetOptionalText(JObject, 'fileContentType', FileContentType);
+
+                    AppointmentNo := CopyStr(AppointmentNoText, 1, MaxStrLen(AppointmentNo));
+
+                    if not Appointment.Get(AppointmentNo) then
+                        exit(BuildErrorResponse(
+                            StrSubstNo('Appointment %1 was not found.', AppointmentNo)));
+
+                    if Appointment."SHA Authorization Code" = '' then
+                        exit(BuildErrorResponse(
+                            StrSubstNo('Appointment %1 does not have a SHA authorization code.', AppointmentNo)));
+
+                    Clear(TempAttachmentBlob);
+
+                    TempAttachmentBlob.CreateOutStream(AttachmentOutStream);
+                    Base64Convert.FromBase64(FileBase64, AttachmentOutStream);
+                    TempAttachmentBlob.CreateInStream(AttachmentInStream);
+
+                    AttachmentId := '';
+                    ResponseCode := 0;
+                    ResponseMsg := '';
+
+                    if not ShaApiManagement.AddClaimAttachment(
+                        Appointment."SHA Authorization Code",
+                        InterventionCode,
+                        DocumentType,
+                        FileName,
+                        FileContentType,
+                        AttachmentInStream,
+                        AttachmentId,
+                        ResponseCode,
+                        ResponseMsg)
+                    then
+                        exit(BuildErrorResponse(ResponseMsg));
+
+                    Clear(DataObj);
+
+                    DataObj.Add('appointmentNo', AppointmentNo);
+                    DataObj.Add('interventionCode', InterventionCode);
+                    DataObj.Add('documentType', DocumentType);
+                    DataObj.Add('fileName', FileName);
+                    DataObj.Add('attachmentId', AttachmentId);
+                    DataObj.Add('shaResponseCode', ResponseCode);
+
+                    exit(BuildSuccessResponse(ResponseMsg, DataObj));
+                end;
+
+
+            // ========================================================
+            // REMOVE CLAIM ATTACHMENT
+            // ========================================================
+
+            'removeclaimattachment':
+                begin
+                    if not GetRequiredText(JObject, 'appointmentNo', AppointmentNoText) then
+                        exit(BuildErrorResponse('appointmentNo is required.'));
+
+                    if not GetRequiredText(JObject, 'attachmentId', AttachmentId) then
+                        exit(BuildErrorResponse('attachmentId is required.'));
+
+                    if not GetRequiredText(JObject, 'interventionCode', InterventionCode) then
+                        exit(BuildErrorResponse('interventionCode is required.'));
+
+                    AppointmentNo := CopyStr(AppointmentNoText, 1, MaxStrLen(AppointmentNo));
+
+                    if not Appointment.Get(AppointmentNo) then
+                        exit(BuildErrorResponse(
+                            StrSubstNo('Appointment %1 was not found.', AppointmentNo)));
+
+                    if Appointment."SHA Authorization Code" = '' then
+                        exit(BuildErrorResponse(
+                            StrSubstNo('Appointment %1 does not have a SHA authorization code.', AppointmentNo)));
+
+                    ResponseCode := 0;
+                    ResponseMsg := '';
+
+                    if not ShaApiManagement.RemoveClaimAttachment(
+                        Appointment."SHA Authorization Code",
+                        AttachmentId,
+                        InterventionCode,
+                        ResponseCode,
+                        ResponseMsg)
+                    then
+                        exit(BuildErrorResponse(ResponseMsg));
+
+                    Clear(DataObj);
+
+                    DataObj.Add('appointmentNo', AppointmentNo);
+                    DataObj.Add('attachmentId', AttachmentId);
+                    DataObj.Add('interventionCode', InterventionCode);
+                    DataObj.Add('shaResponseCode', ResponseCode);
+
+                    exit(BuildSuccessResponse(ResponseMsg, DataObj));
+                end;
             // ========================================================
             // INVALID ACTION
             // ========================================================
 
             else
                 exit(BuildErrorResponse('Invalid action: ' + MyAction));
+
+
         end;
     end;
 
@@ -1470,6 +2134,40 @@ codeunit 90013 "SHA Portal Service"
         exit(
             InterventionCodes.Count() > 0);
     end;
+    // ================================================================
+    // REQUIRED DECIMAL HELPER
+    // ================================================================
+
+    local procedure GetRequiredDecimal(
+        JObject: JsonObject;
+        FieldName: Text;
+        var FieldValue: Decimal): Boolean
+    var
+        JToken: JsonToken;
+        ValueText: Text;
+    begin
+        FieldValue := 0;
+
+        if not JObject.Get(FieldName, JToken) then
+            exit(false);
+
+        if not JToken.IsValue() then
+            exit(false);
+
+        if JToken.AsValue().IsNull() then
+            exit(false);
+
+        ValueText := JToken.AsValue().AsText();
+
+        if ValueText = '' then
+            exit(false);
+
+        if not Evaluate(FieldValue, ValueText, 9) then
+            if not Evaluate(FieldValue, ValueText) then
+                exit(false);
+
+        exit(true);
+    end;
 
     local procedure FindHMSPatient(
         PatientCrId: Text;
@@ -1859,86 +2557,191 @@ codeunit 90013 "SHA Portal Service"
         PatientCrId: Text;
         InterventionCodes: List of [Text])
     var
-        AppointmentIntervention:
-        Record "SHA Appointment Intervention";
-
-        InterventionCache:
-        Record "SHA Patient Intervention Cache";
-
-        InterventionCode:
-        Text;
+        AppointmentIntervention: Record "SHA Appointment Intervention";
+        InterventionCache: Record "SHA Patient Intervention Cache";
+        ClaimHeader: Record "SHA Claim Header";
+        InterventionCode: Text;
+        UnitPrice: Decimal;
     begin
+        if AppointmentNo = '' then
+            exit;
 
-        AppointmentIntervention.Reset();
-
-
-        AppointmentIntervention.SetRange(
-            "Appointment No.",
-            AppointmentNo);
-
-
-        AppointmentIntervention.DeleteAll();
-
+        if PatientCrId = '' then
+            exit;
 
         foreach InterventionCode in InterventionCodes do begin
-
             if InterventionCode <> '' then begin
+                AppointmentIntervention.Reset();
+                AppointmentIntervention.SetRange("Appointment No.", AppointmentNo);
+                AppointmentIntervention.SetRange("Intervention Code", InterventionCode);
 
-                AppointmentIntervention.Init();
+                if not AppointmentIntervention.FindFirst() then begin
+                    Clear(InterventionCache);
 
+                    InterventionCache.Reset();
+                    InterventionCache.SetRange("Patient CR ID", PatientCrId);
+                    InterventionCache.SetRange(Code, InterventionCode);
 
-                AppointmentIntervention."Appointment No." :=
-                    AppointmentNo;
+                    AppointmentIntervention.Init();
 
+                    AppointmentIntervention."Appointment No." := AppointmentNo;
 
-                AppointmentIntervention."Intervention Code" :=
-                    CopyStr(
-                        InterventionCode,
-                        1,
-                        MaxStrLen(
-                            AppointmentIntervention."Intervention Code"));
-
-
-                AppointmentIntervention."Patient CR ID" :=
-                    CopyStr(
-                        PatientCrId,
-                        1,
-                        MaxStrLen(
-                            AppointmentIntervention."Patient CR ID"));
-
-
-                // Retrieve description from cache.
-
-                InterventionCache.Reset();
-
-
-                InterventionCache.SetRange(
-                    "Patient CR ID",
-                    PatientCrId);
-
-
-                InterventionCache.SetRange(
-                    Code,
-                    InterventionCode);
-
-
-                if InterventionCache.FindFirst() then
-                    AppointmentIntervention."Intervention Name" :=
+                    AppointmentIntervention."Intervention Code" :=
                         CopyStr(
-                            InterventionCache.Name,
+                            InterventionCode,
                             1,
-                            MaxStrLen(
-                                AppointmentIntervention."Intervention Name"));
+                            MaxStrLen(AppointmentIntervention."Intervention Code"));
 
+                    AppointmentIntervention."Patient CR ID" :=
+                        CopyStr(
+                            PatientCrId,
+                            1,
+                            MaxStrLen(AppointmentIntervention."Patient CR ID"));
 
-                AppointmentIntervention.Insert();
+                    // ====================================================
+                    // INTERVENTION DETAILS
+                    // ====================================================
 
+                    if InterventionCache.FindFirst() then begin
+                        AppointmentIntervention."Intervention Name" :=
+                            CopyStr(
+                                InterventionCache.Name,
+                                1,
+                                MaxStrLen(AppointmentIntervention."Intervention Name"));
+
+                        AppointmentIntervention."Parent Benefit Code" :=
+                            CopyStr(
+                                InterventionCache."Parent Benefit Code",
+                                1,
+                                MaxStrLen(AppointmentIntervention."Parent Benefit Code"));
+
+                        AppointmentIntervention."Sub Benefit Code" :=
+                            CopyStr(
+                                InterventionCache."Sub Benefit Code",
+                                1,
+                                MaxStrLen(AppointmentIntervention."Sub Benefit Code"));
+
+                        AppointmentIntervention."Needs Preauth" :=
+                            InterventionCache."Needs Preauth";
+
+                        UnitPrice := InterventionCache."Overall Tariff";
+
+                        if UnitPrice = 0 then
+                            UnitPrice := InterventionCache."Fallback Overall Tariff";
+
+                        AppointmentIntervention."Unit Price" := UnitPrice;
+                        AppointmentIntervention.Tariff := UnitPrice;
+                    end else begin
+                        UnitPrice := 0;
+                    end;
+
+                    // ====================================================
+                    // CLAIM DETAILS
+                    // ====================================================
+
+                    AppointmentIntervention.Quantity := 1;
+
+                    AppointmentIntervention."Claim Amount" :=
+                        AppointmentIntervention.Quantity *
+                        AppointmentIntervention."Unit Price";
+
+                    AppointmentIntervention."Service Date" := Today;
+
+                    AppointmentIntervention."Include in Claim" := true;
+
+                    AppointmentIntervention."Line Status" := 'ACTIVE';
+
+                    AppointmentIntervention."Authorization Code" := '';
+
+                    AppointmentIntervention."Created At" := CurrentDateTime();
+                    AppointmentIntervention."Last Updated At" := CurrentDateTime();
+
+                    // ====================================================
+                    // LINK CLAIM IF IT ALREADY EXISTS
+                    // ====================================================
+
+                    ClaimHeader.Reset();
+                    ClaimHeader.SetRange("Appointment No.", AppointmentNo);
+
+                    if ClaimHeader.FindFirst() then
+                        AppointmentIntervention."Claim No." :=
+                            ClaimHeader."Claim No.";
+
+                    AppointmentIntervention.Insert();
+                end else begin
+                    // ====================================================
+                    // UPDATE EXISTING LINE DETAILS IF THEY WERE CREATED
+                    // EARLIER WITH MISSING INFORMATION
+                    // ====================================================
+
+                    Clear(InterventionCache);
+
+                    InterventionCache.Reset();
+                    InterventionCache.SetRange("Patient CR ID", PatientCrId);
+                    InterventionCache.SetRange(Code, InterventionCode);
+
+                    if InterventionCache.FindFirst() then begin
+                        AppointmentIntervention."Intervention Name" :=
+                            CopyStr(
+                                InterventionCache.Name,
+                                1,
+                                MaxStrLen(AppointmentIntervention."Intervention Name"));
+
+                        AppointmentIntervention."Parent Benefit Code" :=
+                            CopyStr(
+                                InterventionCache."Parent Benefit Code",
+                                1,
+                                MaxStrLen(AppointmentIntervention."Parent Benefit Code"));
+
+                        AppointmentIntervention."Sub Benefit Code" :=
+                            CopyStr(
+                                InterventionCache."Sub Benefit Code",
+                                1,
+                                MaxStrLen(AppointmentIntervention."Sub Benefit Code"));
+
+                        AppointmentIntervention."Needs Preauth" :=
+                            InterventionCache."Needs Preauth";
+
+                        UnitPrice := InterventionCache."Overall Tariff";
+
+                        if UnitPrice = 0 then
+                            UnitPrice := InterventionCache."Fallback Overall Tariff";
+
+                        AppointmentIntervention."Unit Price" := UnitPrice;
+                        AppointmentIntervention.Tariff := UnitPrice;
+                    end;
+
+                    if AppointmentIntervention.Quantity = 0 then
+                        AppointmentIntervention.Quantity := 1;
+
+                    AppointmentIntervention."Claim Amount" :=
+                        AppointmentIntervention.Quantity *
+                        AppointmentIntervention."Unit Price";
+
+                    AppointmentIntervention."Include in Claim" := true;
+
+                    if AppointmentIntervention."Line Status" = '' then
+                        AppointmentIntervention."Line Status" := 'ACTIVE';
+
+                    if AppointmentIntervention."Service Date" = 0D then
+                        AppointmentIntervention."Service Date" := Today;
+
+                    ClaimHeader.Reset();
+                    ClaimHeader.SetRange("Appointment No.", AppointmentNo);
+
+                    if ClaimHeader.FindFirst() then
+                        if AppointmentIntervention."Claim No." = '' then
+                            AppointmentIntervention."Claim No." :=
+                                ClaimHeader."Claim No.";
+
+                    AppointmentIntervention."Last Updated At" :=
+                        CurrentDateTime();
+
+                    AppointmentIntervention.Modify();
+                end;
             end;
-
         end;
-
     end;
-
     // ================================================================
     // CLAIM RESPONSE
     // ================================================================
@@ -1992,6 +2795,37 @@ codeunit 90013 "SHA Portal Service"
         DataObj.Add('lastStatusUpdate', Format(ClaimHeader."Last Status Update", 0, 9));
         DataObj.Add('createdAt', Format(ClaimHeader."Created At", 0, 9));
         DataObj.Add('lastUpdatedAt', Format(ClaimHeader."Last Updated At", 0, 9));
+
+        exit(
+            BuildSuccessResponse(
+                MessageText,
+                DataObj));
+    end;
+
+    local procedure BuildPreviewResponse(
+        PreviewResponse: Text;
+        MessageText: Text;
+        ResponseCode: Integer): Text
+    var
+        ResponseToken: JsonToken;
+        DataObj: JsonObject;
+    begin
+        Clear(DataObj);
+
+        DataObj.Add(
+            'shaResponseCode',
+            ResponseCode);
+
+        if PreviewResponse <> '' then begin
+            if ResponseToken.ReadFrom(PreviewResponse) then
+                DataObj.Add(
+                    'preview',
+                    ResponseToken)
+            else
+                DataObj.Add(
+                    'preview',
+                    PreviewResponse);
+        end;
 
         exit(
             BuildSuccessResponse(
@@ -2195,21 +3029,21 @@ codeunit 90013 "SHA Portal Service"
     JObject: JsonObject;
     PropertyName: Text;
     var Value: Boolean): Boolean
-var
-    JToken: JsonToken;
-begin
-    if not JObject.Get(PropertyName, JToken) then
-        exit(false);
+    var
+        JToken: JsonToken;
+    begin
+        if not JObject.Get(PropertyName, JToken) then
+            exit(false);
 
-    if not JToken.IsValue() then
-        exit(false);
+        if not JToken.IsValue() then
+            exit(false);
 
-    if JToken.AsValue().IsNull() then
-        exit(false);
+        if JToken.AsValue().IsNull() then
+            exit(false);
 
-    Value := JToken.AsValue().AsBoolean();
-    exit(true);
-end;
+        Value := JToken.AsValue().AsBoolean();
+        exit(true);
+    end;
     // ================================================================
     // SUCCESS RESPONSE
     // ================================================================

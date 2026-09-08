@@ -2419,6 +2419,134 @@ codeunit 90001 "SHA Api Management"
         exit(true);
     end;
 
+    procedure SendDischargeOTPRequest(
+        PatientCRId: Text;
+        ConsentToken: Text;
+        var ResponseCode: Integer;
+        var ResponseMsg: Text;
+        var OTP: Text): Boolean
+    var
+        ShaHttpClient: Codeunit "SHA Http Client";
+        PayloadObj: JsonObject;
+        ResponseObj: JsonObject;
+        DataToken: JsonToken;
+        DataObj: JsonObject;
+        PayloadText: Text;
+        ResponseText: Text;
+        HttpStatusCode: Integer;
+    begin
+        ResponseCode := 0;
+        ResponseMsg := '';
+        OTP := '';
+
+        // ============================================================
+        // VALIDATION
+        // ============================================================
+
+        if PatientCRId = '' then begin
+            ResponseMsg := 'Patient CR ID is required.';
+            exit(false);
+        end;
+
+        if ConsentToken = '' then begin
+            ResponseMsg := 'Consent token is required to request a discharge OTP.';
+            exit(false);
+        end;
+
+        // ============================================================
+        // BUILD PAYLOAD
+        // ============================================================
+
+        PayloadObj.Add('consent_token', ConsentToken);
+        PayloadObj.Add('patient_id', PatientCRId);
+        PayloadObj.WriteTo(PayloadText);
+
+        // ============================================================
+        // SEND DISCHARGE OTP
+        // ============================================================
+
+        if not ShaHttpClient.SendJson(
+            'POST',
+            '/api/v1/claims/otp/discharge',
+            PayloadText,
+            ResponseText,
+            HttpStatusCode)
+        then begin
+            ResponseCode := HttpStatusCode;
+            ResponseMsg := ResponseText;
+
+            if ResponseMsg = '' then
+                ResponseMsg := 'Failed to send SHA discharge OTP.';
+
+            exit(false);
+        end;
+
+        ResponseCode := HttpStatusCode;
+
+        // ============================================================
+        // HTTP FAILURE
+        // ============================================================
+
+        if (HttpStatusCode <> 200) and (HttpStatusCode <> 201) then begin
+            ResponseMsg := ResponseText;
+
+            if ResponseObj.ReadFrom(ResponseText) then begin
+                ResponseMsg := GetJsonValueText(ResponseObj, 'message');
+
+                if ResponseMsg = '' then
+                    ResponseMsg := GetJsonValueText(ResponseObj, 'detail');
+
+                if ResponseMsg = '' then
+                    ResponseMsg := ResponseText;
+            end;
+
+            exit(false);
+        end;
+
+
+
+
+        // ============================================================
+        // PARSE RESPONSE
+        // ============================================================
+
+        if not ResponseObj.ReadFrom(ResponseText) then begin
+            ResponseMsg := 'SHA returned an invalid discharge OTP response.';
+            exit(false);
+        end;
+
+        // ============================================================
+        // MESSAGE
+        // ============================================================
+
+        ResponseMsg := GetJsonValueText(ResponseObj, 'message');
+
+        if ResponseMsg = '' then
+            ResponseMsg := 'Discharge OTP sent successfully.';
+
+        // ============================================================
+        // DEMO OTP
+        //
+        // SHA may expose OTP either in the message or data object.
+        // ============================================================
+
+        OTP := ExtractOTP(ResponseMsg);
+
+        if OTP = '' then begin
+            if ResponseObj.Get('data', DataToken) then
+                if DataToken.IsObject() then begin
+                    DataObj := DataToken.AsObject();
+
+                    OTP := GetJsonValueText(DataObj, 'otp');
+
+                    if OTP = '' then
+                        OTP := GetJsonValueText(DataObj, 'code');
+                end;
+        end;
+
+        exit(true);
+    end;
+
     procedure CreateAuthorizationOtp(
     PatientId: Text;
     ServiceType: Enum "SHA Service Type";
@@ -3092,262 +3220,458 @@ codeunit 90001 "SHA Api Management"
         exit(true);
     end;
 
-procedure RestoreClaimIntervention(
+    procedure RestoreClaimIntervention(
+        ConsentToken: Text;
+        InterventionCode: Text;
+        var ResponseCode: Integer;
+        var ResponseMsg: Text;
+        var ResponseText: Text): Boolean
+    var
+        ShaHttpClient: Codeunit "SHA Http Client";
+        PayloadObj: JsonObject;
+        PayloadText: Text;
+        HttpStatusCode: Integer;
+        ResponseObj: JsonObject;
+    begin
+        ResponseCode := 0;
+        ResponseMsg := '';
+        ResponseText := '';
+
+        if ConsentToken = '' then begin
+            ResponseMsg := 'SHA Authorization Code / Consent Token is required.';
+            exit(false);
+        end;
+
+        if InterventionCode = '' then begin
+            ResponseMsg := 'Intervention Code is required.';
+            exit(false);
+        end;
+
+        PayloadObj.Add('consent_token', ConsentToken);
+        PayloadObj.Add('intervention_code', InterventionCode);
+        PayloadObj.WriteTo(PayloadText);
+
+        if not ShaHttpClient.SendJson(
+            'POST',
+            '/api/v1/claims/interventions/restore',
+            PayloadText,
+            ResponseText,
+            HttpStatusCode)
+        then begin
+            ResponseCode := HttpStatusCode;
+            ResponseMsg := 'Failed to restore intervention in SHA.';
+
+            if ResponseText <> '' then
+                ResponseMsg := ResponseText;
+
+            exit(false);
+        end;
+
+        ResponseCode := HttpStatusCode;
+
+        if (HttpStatusCode <> 200) and (HttpStatusCode <> 201) then begin
+            ResponseMsg := ResponseText;
+
+            if ResponseObj.ReadFrom(ResponseText) then begin
+                ResponseMsg := GetJsonValueText(ResponseObj, 'message');
+
+                if ResponseMsg = '' then
+                    ResponseMsg := GetJsonValueText(ResponseObj, 'detail');
+
+                if ResponseMsg = '' then
+                    ResponseMsg := GetJsonValueText(ResponseObj, 'error');
+
+                if ResponseMsg = '' then
+                    ResponseMsg := ResponseText;
+            end;
+
+            exit(false);
+        end;
+
+        if ResponseObj.ReadFrom(ResponseText) then
+            ResponseMsg := GetJsonValueText(ResponseObj, 'message');
+
+        if ResponseMsg = '' then
+            ResponseMsg := 'Intervention restored successfully in SHA.';
+
+        exit(true);
+    end;
+
+
+    procedure RetireClaimIntervention(
+        ConsentToken: Text;
+        InterventionCode: Text;
+        var ResponseCode: Integer;
+        var ResponseMsg: Text;
+        var ResponseText: Text): Boolean
+    var
+        ShaHttpClient: Codeunit "SHA Http Client";
+        PayloadObj: JsonObject;
+        PayloadText: Text;
+        HttpStatusCode: Integer;
+        ResponseObj: JsonObject;
+    begin
+        ResponseCode := 0;
+        ResponseMsg := '';
+        ResponseText := '';
+
+        if ConsentToken = '' then begin
+            ResponseMsg := 'SHA Authorization Code / Consent Token is required.';
+            exit(false);
+        end;
+
+        if InterventionCode = '' then begin
+            ResponseMsg := 'Intervention Code is required.';
+            exit(false);
+        end;
+
+        PayloadObj.Add('consent_token', ConsentToken);
+        PayloadObj.Add('intervention_code', InterventionCode);
+        PayloadObj.WriteTo(PayloadText);
+
+        if not ShaHttpClient.SendJson(
+            'POST',
+            '/api/v1/claims/interventions/retire',
+            PayloadText,
+            ResponseText,
+            HttpStatusCode)
+        then begin
+            ResponseCode := HttpStatusCode;
+            ResponseMsg := 'Failed to retire intervention in SHA.';
+
+            if ResponseText <> '' then
+                ResponseMsg := ResponseText;
+
+            exit(false);
+        end;
+
+        ResponseCode := HttpStatusCode;
+
+        if (HttpStatusCode <> 200) and (HttpStatusCode <> 201) then begin
+            ResponseMsg := ResponseText;
+
+            if ResponseObj.ReadFrom(ResponseText) then begin
+                ResponseMsg := GetJsonValueText(ResponseObj, 'message');
+
+                if ResponseMsg = '' then
+                    ResponseMsg := GetJsonValueText(ResponseObj, 'detail');
+
+                if ResponseMsg = '' then
+                    ResponseMsg := GetJsonValueText(ResponseObj, 'error');
+
+                if ResponseMsg = '' then
+                    ResponseMsg := ResponseText;
+            end;
+
+            exit(false);
+        end;
+
+        if ResponseObj.ReadFrom(ResponseText) then
+            ResponseMsg := GetJsonValueText(ResponseObj, 'message');
+
+        if ResponseMsg = '' then
+            ResponseMsg := 'Intervention retired successfully in SHA.';
+
+        exit(true);
+    end;
+
+
+    procedure SwitchClaimIntervention(
+        ConsentToken: Text;
+        ExistingInterventionCode: Text;
+        NewInterventionCode: Text;
+        RetainBillItems: Boolean;
+        BillFrom: Text;
+        BillTo: Text;
+        var ResponseCode: Integer;
+        var ResponseMsg: Text;
+        var ResponseText: Text): Boolean
+    var
+        ShaHttpClient: Codeunit "SHA Http Client";
+        PayloadObj: JsonObject;
+        PayloadText: Text;
+        HttpStatusCode: Integer;
+        ResponseObj: JsonObject;
+    begin
+        ResponseCode := 0;
+        ResponseMsg := '';
+        ResponseText := '';
+
+        if ConsentToken = '' then begin
+            ResponseMsg := 'SHA Authorization Code / Consent Token is required.';
+            exit(false);
+        end;
+
+        if ExistingInterventionCode = '' then begin
+            ResponseMsg := 'Existing Intervention Code is required.';
+            exit(false);
+        end;
+
+        if NewInterventionCode = '' then begin
+            ResponseMsg := 'New Intervention Code is required.';
+            exit(false);
+        end;
+
+        if ExistingInterventionCode = NewInterventionCode then begin
+            ResponseMsg := 'Existing and new intervention codes cannot be the same.';
+            exit(false);
+        end;
+
+        PayloadObj.Add('consent_token', ConsentToken);
+        PayloadObj.Add('existing_intervention_code', ExistingInterventionCode);
+        PayloadObj.Add('new_intervention_code', NewInterventionCode);
+        PayloadObj.Add('retain_bill_items', RetainBillItems);
+
+        if BillFrom <> '' then
+            PayloadObj.Add('bill_from', BillFrom);
+
+        if BillTo <> '' then
+            PayloadObj.Add('bill_to', BillTo);
+
+        PayloadObj.WriteTo(PayloadText);
+
+        if not ShaHttpClient.SendJson(
+            'POST',
+            '/api/v1/claims/interventions/switch',
+            PayloadText,
+            ResponseText,
+            HttpStatusCode)
+        then begin
+            ResponseCode := HttpStatusCode;
+            ResponseMsg := 'Failed to switch intervention in SHA.';
+
+            if ResponseText <> '' then
+                ResponseMsg := ResponseText;
+
+            exit(false);
+        end;
+
+        ResponseCode := HttpStatusCode;
+
+        if (HttpStatusCode <> 200) and (HttpStatusCode <> 201) then begin
+            ResponseMsg := ResponseText;
+
+            if ResponseObj.ReadFrom(ResponseText) then begin
+                ResponseMsg := GetJsonValueText(ResponseObj, 'message');
+
+                if ResponseMsg = '' then
+                    ResponseMsg := GetJsonValueText(ResponseObj, 'detail');
+
+                if ResponseMsg = '' then
+                    ResponseMsg := GetJsonValueText(ResponseObj, 'error');
+
+                if ResponseMsg = '' then
+                    ResponseMsg := ResponseText;
+            end;
+
+            exit(false);
+        end;
+
+        if ResponseObj.ReadFrom(ResponseText) then
+            ResponseMsg := GetJsonValueText(ResponseObj, 'message');
+
+        if ResponseMsg = '' then
+            ResponseMsg := 'Intervention switched successfully in SHA.';
+
+        exit(true);
+    end;
+procedure AddClaimAttachment(
     ConsentToken: Text;
     InterventionCode: Text;
+    DocumentType: Text;
+    FileName: Text;
+    FileContentType: Text;
+    var FileInStream: InStream;
+    var AttachmentId: Text;
     var ResponseCode: Integer;
-    var ResponseMsg: Text;
-    var ResponseText: Text): Boolean
+    var ResponseMsg: Text): Boolean
 var
     ShaHttpClient: Codeunit "SHA Http Client";
-    PayloadObj: JsonObject;
-    PayloadText: Text;
-    HttpStatusCode: Integer;
+    MultipartContent: HttpContent;
+    TextFields: Dictionary of [Text, Text];
     ResponseObj: JsonObject;
+    ResponseText: Text;
+    HttpStatusCode: Integer;
 begin
+    AttachmentId := '';
     ResponseCode := 0;
     ResponseMsg := '';
-    ResponseText := '';
+
+    // ============================================================
+    // VALIDATION
+    // ============================================================
 
     if ConsentToken = '' then begin
-        ResponseMsg := 'SHA Authorization Code / Consent Token is required.';
+        ResponseMsg := 'SHA consent token is required.';
         exit(false);
     end;
 
     if InterventionCode = '' then begin
-        ResponseMsg := 'Intervention Code is required.';
+        ResponseMsg := 'SHA intervention code is required.';
         exit(false);
     end;
 
-    PayloadObj.Add('consent_token', ConsentToken);
-    PayloadObj.Add('intervention_code', InterventionCode);
-    PayloadObj.WriteTo(PayloadText);
+    if DocumentType = '' then begin
+        ResponseMsg := 'SHA document type is required.';
+        exit(false);
+    end;
 
-    if not ShaHttpClient.SendJson(
+    if FileName = '' then begin
+        ResponseMsg := 'Attachment file name is required.';
+        exit(false);
+    end;
+
+    // ============================================================
+    // MULTIPART FORM FIELDS
+    // ============================================================
+
+    TextFields.Add('consent_token', ConsentToken);
+    TextFields.Add('document_type', DocumentType);
+    TextFields.Add('intervention_code', InterventionCode);
+
+    if FileContentType = '' then
+        FileContentType := ShaHttpClient.GetContentType(FileName);
+
+    ShaHttpClient.BuildMultipartContent(
+        TextFields,
+        'file_blob',
+        FileName,
+        FileContentType,
+        FileInStream,
+        MultipartContent);
+
+    ShaHttpClient.SetLogContext('', '', ConsentToken);
+
+    // ============================================================
+    // SEND TO SHA
+    // ============================================================
+
+    if not ShaHttpClient.SendMultipart(
         'POST',
-        '/api/v1/claims/interventions/restore',
-        PayloadText,
+        '/api/v1/claims/attachments',
+        MultipartContent,
         ResponseText,
         HttpStatusCode)
     then begin
         ResponseCode := HttpStatusCode;
-        ResponseMsg := 'Failed to restore intervention in SHA.';
+        ResponseMsg := ParseSHAErrorMessage(ResponseText);
 
-        if ResponseText <> '' then
-            ResponseMsg := ResponseText;
+        if ResponseMsg = '' then
+            ResponseMsg := 'Failed to add SHA claim attachment.';
 
         exit(false);
     end;
 
     ResponseCode := HttpStatusCode;
 
-    if (HttpStatusCode <> 200) and (HttpStatusCode <> 201) then begin
-        ResponseMsg := ResponseText;
+    // ============================================================
+    // PARSE RESPONSE
+    // ============================================================
 
-        if ResponseObj.ReadFrom(ResponseText) then begin
-            ResponseMsg := GetJsonValueText(ResponseObj, 'message');
-
-            if ResponseMsg = '' then
-                ResponseMsg := GetJsonValueText(ResponseObj, 'detail');
-
-            if ResponseMsg = '' then
-                ResponseMsg := GetJsonValueText(ResponseObj, 'error');
-
-            if ResponseMsg = '' then
-                ResponseMsg := ResponseText;
-        end;
-
+    if not ResponseObj.ReadFrom(ResponseText) then begin
+        ResponseMsg := 'SHA returned an invalid attachment response.';
         exit(false);
     end;
 
-    if ResponseObj.ReadFrom(ResponseText) then
+    AttachmentId := GetJsonValueText(ResponseObj, 'id');
+
+    ResponseMsg := GetJsonValueText(ResponseObj, 'description');
+
+    if ResponseMsg = '' then
         ResponseMsg := GetJsonValueText(ResponseObj, 'message');
 
     if ResponseMsg = '' then
-        ResponseMsg := 'Intervention restored successfully in SHA.';
+        ResponseMsg := 'Claim attachment added successfully.';
 
     exit(true);
 end;
 
-
-procedure RetireClaimIntervention(
+procedure RemoveClaimAttachment(
     ConsentToken: Text;
+    AttachmentId: Text;
     InterventionCode: Text;
     var ResponseCode: Integer;
-    var ResponseMsg: Text;
-    var ResponseText: Text): Boolean
+    var ResponseMsg: Text): Boolean
 var
     ShaHttpClient: Codeunit "SHA Http Client";
     PayloadObj: JsonObject;
-    PayloadText: Text;
-    HttpStatusCode: Integer;
     ResponseObj: JsonObject;
+    PayloadText: Text;
+    ResponseText: Text;
+    HttpStatusCode: Integer;
 begin
     ResponseCode := 0;
     ResponseMsg := '';
-    ResponseText := '';
+
+    // ============================================================
+    // VALIDATION
+    // ============================================================
 
     if ConsentToken = '' then begin
-        ResponseMsg := 'SHA Authorization Code / Consent Token is required.';
+        ResponseMsg := 'SHA consent token is required.';
+        exit(false);
+    end;
+
+    if AttachmentId = '' then begin
+        ResponseMsg := 'SHA attachment ID is required.';
         exit(false);
     end;
 
     if InterventionCode = '' then begin
-        ResponseMsg := 'Intervention Code is required.';
+        ResponseMsg := 'SHA intervention code is required.';
         exit(false);
     end;
 
+    // ============================================================
+    // BUILD PAYLOAD
+    // ============================================================
+
+    PayloadObj.Add('attachment_id', AttachmentId);
     PayloadObj.Add('consent_token', ConsentToken);
     PayloadObj.Add('intervention_code', InterventionCode);
+
     PayloadObj.WriteTo(PayloadText);
 
+    ShaHttpClient.SetLogContext('', '', ConsentToken);
+
+    // ============================================================
+    // REMOVE ATTACHMENT
+    // ============================================================
+
     if not ShaHttpClient.SendJson(
-        'POST',
-        '/api/v1/claims/interventions/retire',
+        'PATCH',
+        '/api/v1/claims/attachments',
         PayloadText,
         ResponseText,
         HttpStatusCode)
     then begin
         ResponseCode := HttpStatusCode;
-        ResponseMsg := 'Failed to retire intervention in SHA.';
+        ResponseMsg := ParseSHAErrorMessage(ResponseText);
 
-        if ResponseText <> '' then
-            ResponseMsg := ResponseText;
+        if ResponseMsg = '' then
+            ResponseMsg := 'Failed to remove SHA claim attachment.';
 
         exit(false);
     end;
 
     ResponseCode := HttpStatusCode;
 
-    if (HttpStatusCode <> 200) and (HttpStatusCode <> 201) then begin
-        ResponseMsg := ResponseText;
+    // ============================================================
+    // RESPONSE
+    // ============================================================
 
-        if ResponseObj.ReadFrom(ResponseText) then begin
-            ResponseMsg := GetJsonValueText(ResponseObj, 'message');
-
-            if ResponseMsg = '' then
-                ResponseMsg := GetJsonValueText(ResponseObj, 'detail');
-
-            if ResponseMsg = '' then
-                ResponseMsg := GetJsonValueText(ResponseObj, 'error');
-
-            if ResponseMsg = '' then
-                ResponseMsg := ResponseText;
-        end;
-
-        exit(false);
-    end;
-
-    if ResponseObj.ReadFrom(ResponseText) then
+    if ResponseObj.ReadFrom(ResponseText) then begin
         ResponseMsg := GetJsonValueText(ResponseObj, 'message');
 
+        if ResponseMsg = '' then
+            ResponseMsg := GetJsonValueText(ResponseObj, 'description');
+    end;
+
     if ResponseMsg = '' then
-        ResponseMsg := 'Intervention retired successfully in SHA.';
+        ResponseMsg := 'Claim attachment removed successfully.';
 
     exit(true);
 end;
-
-
-procedure SwitchClaimIntervention(
-    ConsentToken: Text;
-    ExistingInterventionCode: Text;
-    NewInterventionCode: Text;
-    RetainBillItems: Boolean;
-    BillFrom: Text;
-    BillTo: Text;
-    var ResponseCode: Integer;
-    var ResponseMsg: Text;
-    var ResponseText: Text): Boolean
-var
-    ShaHttpClient: Codeunit "SHA Http Client";
-    PayloadObj: JsonObject;
-    PayloadText: Text;
-    HttpStatusCode: Integer;
-    ResponseObj: JsonObject;
-begin
-    ResponseCode := 0;
-    ResponseMsg := '';
-    ResponseText := '';
-
-    if ConsentToken = '' then begin
-        ResponseMsg := 'SHA Authorization Code / Consent Token is required.';
-        exit(false);
-    end;
-
-    if ExistingInterventionCode = '' then begin
-        ResponseMsg := 'Existing Intervention Code is required.';
-        exit(false);
-    end;
-
-    if NewInterventionCode = '' then begin
-        ResponseMsg := 'New Intervention Code is required.';
-        exit(false);
-    end;
-
-    if ExistingInterventionCode = NewInterventionCode then begin
-        ResponseMsg := 'Existing and new intervention codes cannot be the same.';
-        exit(false);
-    end;
-
-    PayloadObj.Add('consent_token', ConsentToken);
-    PayloadObj.Add('existing_intervention_code', ExistingInterventionCode);
-    PayloadObj.Add('new_intervention_code', NewInterventionCode);
-    PayloadObj.Add('retain_bill_items', RetainBillItems);
-
-    if BillFrom <> '' then
-        PayloadObj.Add('bill_from', BillFrom);
-
-    if BillTo <> '' then
-        PayloadObj.Add('bill_to', BillTo);
-
-    PayloadObj.WriteTo(PayloadText);
-
-    if not ShaHttpClient.SendJson(
-        'POST',
-        '/api/v1/claims/interventions/switch',
-        PayloadText,
-        ResponseText,
-        HttpStatusCode)
-    then begin
-        ResponseCode := HttpStatusCode;
-        ResponseMsg := 'Failed to switch intervention in SHA.';
-
-        if ResponseText <> '' then
-            ResponseMsg := ResponseText;
-
-        exit(false);
-    end;
-
-    ResponseCode := HttpStatusCode;
-
-    if (HttpStatusCode <> 200) and (HttpStatusCode <> 201) then begin
-        ResponseMsg := ResponseText;
-
-        if ResponseObj.ReadFrom(ResponseText) then begin
-            ResponseMsg := GetJsonValueText(ResponseObj, 'message');
-
-            if ResponseMsg = '' then
-                ResponseMsg := GetJsonValueText(ResponseObj, 'detail');
-
-            if ResponseMsg = '' then
-                ResponseMsg := GetJsonValueText(ResponseObj, 'error');
-
-            if ResponseMsg = '' then
-                ResponseMsg := ResponseText;
-        end;
-
-        exit(false);
-    end;
-
-    if ResponseObj.ReadFrom(ResponseText) then
-        ResponseMsg := GetJsonValueText(ResponseObj, 'message');
-
-    if ResponseMsg = '' then
-        ResponseMsg := 'Intervention switched successfully in SHA.';
-
-    exit(true);
-end;
-
     procedure ServiceTypeToText(ServiceType: Enum "SHA Service Type"): Text
     begin
         case ServiceType of
@@ -3559,5 +3883,37 @@ end;
         exit(FullName);
     end;
 
+local procedure ParseSHAErrorMessage(ResponseText: Text): Text
+var
+    ResponseObj: JsonObject;
+    DataToken: JsonToken;
+    Result: Text;
+begin
+    if ResponseText = '' then
+        exit('');
 
+    if not ResponseObj.ReadFrom(ResponseText) then
+        exit(ResponseText);
+
+    Result := GetJsonValueText(ResponseObj, 'message');
+
+    if Result <> '' then
+        exit(Result);
+
+    Result := GetJsonValueText(ResponseObj, 'detail');
+
+    if Result <> '' then
+        exit(Result);
+
+    Result := GetJsonValueText(ResponseObj, 'description');
+
+    if Result <> '' then
+        exit(Result);
+
+    if ResponseObj.Get('error', DataToken) then
+        if DataToken.IsValue() then
+            exit(DataToken.AsValue().AsText());
+
+    exit(ResponseText);
+end;
 }

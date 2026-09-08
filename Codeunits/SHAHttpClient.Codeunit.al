@@ -35,8 +35,10 @@ codeunit 90005 "SHA Http Client"
 
         Content.WriteFrom(RequestBodyText);
         Content.GetHeaders(ContentHeaders);
+
         if ContentHeaders.Contains('Content-Type') then
             ContentHeaders.Remove('Content-Type');
+
         ContentHeaders.Add('Content-Type', 'application/json');
 
         exit(SendCore(Method, RelativeEndpoint, Content, true, RequestBodyText, ResponseText, HttpStatusCode));
@@ -44,10 +46,23 @@ codeunit 90005 "SHA Http Client"
 
     procedure SendMultipart(Method: Text; RelativeEndpoint: Text; var Content: HttpContent; var ResponseText: Text; var HttpStatusCode: Integer): Boolean
     begin
-        exit(SendCore(Method, RelativeEndpoint, Content, true, '<multipart/form-data body, not logged as text>', ResponseText, HttpStatusCode));
+        exit(SendCore(
+            Method,
+            RelativeEndpoint,
+            Content,
+            true,
+            '<multipart/form-data body, binary content not logged>',
+            ResponseText,
+            HttpStatusCode));
     end;
 
-    procedure BuildMultipartContent(TextFields: Dictionary of [Text, Text]; FileFieldName: Text; FileName: Text; FileContentType: Text; var FileInStream: InStream; var Content: HttpContent)
+    procedure BuildMultipartContent(
+        TextFields: Dictionary of [Text, Text];
+        FileFieldName: Text;
+        FileName: Text;
+        FileContentType: Text;
+        var FileInStream: InStream;
+        var Content: HttpContent)
     var
         TempBlob: Codeunit "Temp Blob";
         OutStr: OutStream;
@@ -62,9 +77,10 @@ codeunit 90005 "SHA Http Client"
         CRChar := 13;
         LFChar := 10;
         CRLF := Format(CRChar) + Format(LFChar);
+
         Boundary := 'SHABoundary' + DelChr(Format(CreateGuid()), '=', '{}-');
 
-        TempBlob.CreateOutStream(OutStr, TextEncoding::UTF8);
+        TempBlob.CreateOutStream(OutStr);
 
         foreach FieldKey in TextFields.Keys() do begin
             OutStr.WriteText('--' + Boundary + CRLF);
@@ -74,9 +90,19 @@ codeunit 90005 "SHA Http Client"
 
         if FileFieldName <> '' then begin
             OutStr.WriteText('--' + Boundary + CRLF);
-            OutStr.WriteText(StrSubstNo('Content-Disposition: form-data; name="%1"; filename="%2"', FileFieldName, FileName) + CRLF);
+            OutStr.WriteText(
+                StrSubstNo(
+                    'Content-Disposition: form-data; name="%1"; filename="%2"',
+                    FileFieldName,
+                    FileName) + CRLF);
+
+            if FileContentType = '' then
+                FileContentType := GetContentType(FileName);
+
             OutStr.WriteText(StrSubstNo('Content-Type: %1', FileContentType) + CRLF + CRLF);
+
             CopyStream(OutStr, FileInStream);
+
             OutStr.WriteText(CRLF);
         end;
 
@@ -84,13 +110,80 @@ codeunit 90005 "SHA Http Client"
 
         TempBlob.CreateInStream(InStr);
         Content.WriteFrom(InStr);
+
         Content.GetHeaders(ContentHeaders);
+
         if ContentHeaders.Contains('Content-Type') then
             ContentHeaders.Remove('Content-Type');
-        ContentHeaders.Add('Content-Type', StrSubstNo('multipart/form-data; boundary=%1', Boundary));
+
+        ContentHeaders.Add(
+            'Content-Type',
+            StrSubstNo('multipart/form-data; boundary=%1', Boundary));
     end;
 
-    local procedure SendCore(Method: Text; RelativeEndpoint: Text; Content: HttpContent; HasContent: Boolean; RequestBodyForLog: Text; var ResponseText: Text; var HttpStatusCode: Integer): Boolean
+    procedure GetContentType(FileName: Text): Text
+    var
+        FileExtension: Text;
+    begin
+        FileExtension := LowerCase(GetFileExtension(FileName));
+
+        case FileExtension of
+            'pdf':
+                exit('application/pdf');
+            'jpg', 'jpeg':
+                exit('image/jpeg');
+            'png':
+                exit('image/png');
+            'gif':
+                exit('image/gif');
+            'txt':
+                exit('text/plain');
+            'csv':
+                exit('text/csv');
+            'xml':
+                exit('application/xml');
+            'json':
+                exit('application/json');
+            'doc':
+                exit('application/msword');
+            'docx':
+                exit('application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+            'xls':
+                exit('application/vnd.ms-excel');
+            'xlsx':
+                exit('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+            else
+                exit('application/octet-stream');
+        end;
+    end;
+
+    local procedure GetFileExtension(FileName: Text): Text
+    var
+        Position: Integer;
+        Index: Integer;
+    begin
+        Position := 0;
+
+        for Index := StrLen(FileName) downto 1 do
+            if CopyStr(FileName, Index, 1) = '.' then begin
+                Position := Index;
+                break;
+            end;
+
+        if Position = 0 then
+            exit('');
+
+        exit(CopyStr(FileName, Position + 1));
+    end;
+
+    local procedure SendCore(
+        Method: Text;
+        RelativeEndpoint: Text;
+        Content: HttpContent;
+        HasContent: Boolean;
+        RequestBodyForLog: Text;
+        var ResponseText: Text;
+        var HttpStatusCode: Integer): Boolean
     var
         ShaSetup: Record "SHA Setup";
         Client: HttpClient;
@@ -107,16 +200,15 @@ codeunit 90005 "SHA Http Client"
         ErrorCategory: Enum "SHA Error Category";
         ErrorMessage: Text;
     begin
-        // Retrieve setup and global dimension directly
         ShaSetup.Reset();
         ShaSetup.SetRange(Enabled, true);
 
         if not ShaSetup.FindFirst() then
-            Error(
-                'No enabled SHA Setup has been configured.');
+            Error('No enabled SHA Setup has been configured.');
 
         ShaSetup.TestField("Global Dimension 1 Code");
         ShaSetup.TestField("Base URL");
+
         CorrelationId := CreateGuid();
         RequestStart := CurrentDateTime();
         HttpStatusCode := 0;
@@ -129,22 +221,23 @@ codeunit 90005 "SHA Http Client"
             RetryAllowed := false;
 
             Clear(Request);
+
             Request.Method(Method);
             Request.SetRequestUri(ShaSetup."Base URL" + RelativeEndpoint);
+
             if HasContent then
                 Request.Content(Content);
+
             Request.GetHeaders(RequestHeaders);
             RequestHeaders.Add('Accept', 'application/json');
-
-            // Pass the dimension fetched from setup to Authentication Mgt
             RequestHeaders.Add(
                 'Authorization',
-                'Bearer ' +
-                ShaAuthenticationMgt.GetAccessToken(
-                    ShaSetup."Global Dimension 1 Code"));
-                    
+                'Bearer ' + ShaAuthenticationMgt.GetAccessToken(ShaSetup."Global Dimension 1 Code"));
+
             Client.Timeout := ShaSetup."Timeout (Sec)" * 1000;
+
             Clear(Response);
+
             TransportOk := Client.Send(Request, Response);
             RequestEnd := CurrentDateTime();
 
@@ -172,13 +265,25 @@ codeunit 90005 "SHA Http Client"
             end;
         end;
 
-        // Log using the setup dimension code
-        ShaIntegrationLogMgt.LogCall(CorrelationId, ShaSetup."Global Dimension 1 Code", RelativeEndpoint, Method,
-            RequestStart, RequestEnd, HttpStatusCode, ErrorCategory, ErrorMessage,
-            LogPatientNo, LogAppointmentNo, LogConsentToken,
-            RequestBodyForLog, ResponseText, ShaSetup."Log Request/Response Bodies");
+        ShaIntegrationLogMgt.LogCall(
+            CorrelationId,
+            ShaSetup."Global Dimension 1 Code",
+            RelativeEndpoint,
+            Method,
+            RequestStart,
+            RequestEnd,
+            HttpStatusCode,
+            ErrorCategory,
+            ErrorMessage,
+            LogPatientNo,
+            LogAppointmentNo,
+            LogConsentToken,
+            RequestBodyForLog,
+            ResponseText,
+            ShaSetup."Log Request/Response Bodies");
 
         ClearLogContext();
+
         exit(Success);
     end;
 
