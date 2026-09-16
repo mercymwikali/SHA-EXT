@@ -587,7 +587,7 @@ codeunit 90013 "SHA Portal Service"
                         exit(BuildErrorResponse('appointmentNo is required.'));
 
                     AppointmentNo := CopyStr(AppointmentNoText, 1, MaxStrLen(AppointmentNo));
-
+                    ContactId := GetOptionalInteger(JObject, 'contactId');
                     if not Appointment.Get(AppointmentNo) then
                         exit(BuildErrorResponse(
                             StrSubstNo('Appointment %1 was not found.', AppointmentNo)));
@@ -605,6 +605,7 @@ codeunit 90013 "SHA Portal Service"
                     ReturnedOTP := '';
 
                     if not ShaApiManagement.SendDischargeOTPRequest(
+                    ContactId,
                         Appointment."SHA Patient CR ID",
                         Appointment."SHA Authorization Code",
                         ResponseCode,

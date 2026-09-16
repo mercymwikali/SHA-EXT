@@ -1601,15 +1601,16 @@ codeunit 90014 "SHA Claim Processing"
 
         PayloadObj.Add('consent_token', Appointment."SHA Authorization Code");
         PayloadObj.Add('invoice_number', InvoiceNumber);
+                PayloadObj.Add('otp', OTP);
+
         PayloadObj.Add('discharge_reason', DischargeReason);
-        PayloadObj.Add('discharge_status', DischargeStatus);
-        PayloadObj.Add('otp', OTP);
+        // PayloadObj.Add('discharge_status', DischargeStatus);
 
         if Notes <> '' then
             PayloadObj.Add('notes', Notes);
 
-        if BeneficiaryContactId <> '' then
-            PayloadObj.Add('beneficiary_contact_id', BeneficiaryContactId);
+        // if BeneficiaryContactId <> '' then
+        //     PayloadObj.Add('beneficiary_contact_id', BeneficiaryContactId);
 
         // discharge_auth_guid is intentionally NOT added.
 

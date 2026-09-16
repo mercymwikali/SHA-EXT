@@ -2420,7 +2420,8 @@ codeunit 90001 "SHA Api Management"
     end;
 
     procedure SendDischargeOTPRequest(
-        PatientCRId: Text;
+        ContactId: Integer;
+        PatientCRId:Text;
         ConsentToken: Text;
         var ResponseCode: Integer;
         var ResponseMsg: Text;
@@ -2458,7 +2459,10 @@ codeunit 90001 "SHA Api Management"
         // ============================================================
 
         PayloadObj.Add('consent_token', ConsentToken);
-        PayloadObj.Add('patient_id', PatientCRId);
+                PayloadObj.Add('patient_id', PatientCRId);
+
+        PayloadObj.Add('otp_type', 'discharge');
+        PayloadObj.Add('beneficiary_contact_id', ContactId);
         PayloadObj.WriteTo(PayloadText);
 
         // ============================================================
