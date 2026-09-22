@@ -1,5 +1,6 @@
 namespace SHA.SHA;
 using PTL.HMIS.SHA;
+
 using System.Reflection;
 
 codeunit 90000 SHABenefitCoverage

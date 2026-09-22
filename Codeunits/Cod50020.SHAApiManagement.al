@@ -2,6 +2,10 @@ namespace SHA.SHA;
 
 using PTL.HMIS.SHA;
 using System.Reflection;
+using Microsoft.Foundation.Attachment;
+using System.Environment;
+using System.Text;
+using System.Utilities;
 
 codeunit 90001 "SHA Api Management"
 {
@@ -2421,7 +2425,7 @@ codeunit 90001 "SHA Api Management"
 
     procedure SendDischargeOTPRequest(
         ContactId: Integer;
-        PatientCRId:Text;
+        PatientCRId: Text;
         ConsentToken: Text;
         var ResponseCode: Integer;
         var ResponseMsg: Text;
@@ -2459,7 +2463,7 @@ codeunit 90001 "SHA Api Management"
         // ============================================================
 
         PayloadObj.Add('consent_token', ConsentToken);
-                PayloadObj.Add('patient_id', PatientCRId);
+        PayloadObj.Add('patient_id', PatientCRId);
 
         PayloadObj.Add('otp_type', 'discharge');
         PayloadObj.Add('beneficiary_contact_id', ContactId);
@@ -3479,203 +3483,205 @@ codeunit 90001 "SHA Api Management"
 
         exit(true);
     end;
-procedure AddClaimAttachment(
-    ConsentToken: Text;
-    InterventionCode: Text;
-    DocumentType: Text;
-    FileName: Text;
-    FileContentType: Text;
-    var FileInStream: InStream;
-    var AttachmentId: Text;
-    var ResponseCode: Integer;
-    var ResponseMsg: Text): Boolean
-var
-    ShaHttpClient: Codeunit "SHA Http Client";
-    MultipartContent: HttpContent;
-    TextFields: Dictionary of [Text, Text];
-    ResponseObj: JsonObject;
-    ResponseText: Text;
-    HttpStatusCode: Integer;
-begin
-    AttachmentId := '';
-    ResponseCode := 0;
-    ResponseMsg := '';
 
-    // ============================================================
-    // VALIDATION
-    // ============================================================
+    procedure AddClaimAttachment(
+        ConsentToken: Text;
+        InterventionCode: Text;
+        DocumentType: Text;
+        FileName: Text;
+        FileContentType: Text;
+        var FileInStream: InStream;
+        var AttachmentId: Text;
+        var ResponseCode: Integer;
+        var ResponseMsg: Text): Boolean
+    var
+        ShaHttpClient: Codeunit "SHA Http Client";
+        MultipartContent: HttpContent;
+        TextFields: Dictionary of [Text, Text];
+        ResponseObj: JsonObject;
+        ResponseText: Text;
+        HttpStatusCode: Integer;
+    begin
+        AttachmentId := '';
+        ResponseCode := 0;
+        ResponseMsg := '';
 
-    if ConsentToken = '' then begin
-        ResponseMsg := 'SHA consent token is required.';
-        exit(false);
-    end;
+        // ============================================================
+        // VALIDATION
+        // ============================================================
 
-    if InterventionCode = '' then begin
-        ResponseMsg := 'SHA intervention code is required.';
-        exit(false);
-    end;
+        if ConsentToken = '' then begin
+            ResponseMsg := 'SHA consent token is required.';
+            exit(false);
+        end;
 
-    if DocumentType = '' then begin
-        ResponseMsg := 'SHA document type is required.';
-        exit(false);
-    end;
+        if InterventionCode = '' then begin
+            ResponseMsg := 'SHA intervention code is required.';
+            exit(false);
+        end;
 
-    if FileName = '' then begin
-        ResponseMsg := 'Attachment file name is required.';
-        exit(false);
-    end;
+        if DocumentType = '' then begin
+            ResponseMsg := 'SHA document type is required.';
+            exit(false);
+        end;
 
-    // ============================================================
-    // MULTIPART FORM FIELDS
-    // ============================================================
+        if FileName = '' then begin
+            ResponseMsg := 'Attachment file name is required.';
+            exit(false);
+        end;
 
-    TextFields.Add('consent_token', ConsentToken);
-    TextFields.Add('document_type', DocumentType);
-    TextFields.Add('intervention_code', InterventionCode);
+        // ============================================================
+        // MULTIPART FORM FIELDS
+        // ============================================================
 
-    if FileContentType = '' then
-        FileContentType := ShaHttpClient.GetContentType(FileName);
+        TextFields.Add('consent_token', ConsentToken);
+        TextFields.Add('document_type', DocumentType);
+        TextFields.Add('intervention_code', InterventionCode);
 
-    ShaHttpClient.BuildMultipartContent(
-        TextFields,
-        'file_blob',
-        FileName,
-        FileContentType,
-        FileInStream,
-        MultipartContent);
+        if FileContentType = '' then
+            FileContentType := ShaHttpClient.GetContentType(FileName);
 
-    ShaHttpClient.SetLogContext('', '', ConsentToken);
+        ShaHttpClient.BuildMultipartContent(
+            TextFields,
+            'file_blob',
+            FileName,
+            FileContentType,
+            FileInStream,
+            MultipartContent);
 
-    // ============================================================
-    // SEND TO SHA
-    // ============================================================
+        ShaHttpClient.SetLogContext('', '', ConsentToken);
 
-    if not ShaHttpClient.SendMultipart(
-        'POST',
-        '/api/v1/claims/attachments',
-        MultipartContent,
-        ResponseText,
-        HttpStatusCode)
-    then begin
+        // ============================================================
+        // SEND TO SHA
+        // ============================================================
+
+        if not ShaHttpClient.SendMultipart(
+            'POST',
+            '/api/v1/claims/attachments',
+            MultipartContent,
+            ResponseText,
+            HttpStatusCode)
+        then begin
+            ResponseCode := HttpStatusCode;
+            ResponseMsg := ParseSHAErrorMessage(ResponseText);
+
+            if ResponseMsg = '' then
+                ResponseMsg := 'Failed to add SHA claim attachment.';
+
+            exit(false);
+        end;
+
         ResponseCode := HttpStatusCode;
-        ResponseMsg := ParseSHAErrorMessage(ResponseText);
+
+        // ============================================================
+        // PARSE RESPONSE
+        // ============================================================
+
+        if not ResponseObj.ReadFrom(ResponseText) then begin
+            ResponseMsg := 'SHA returned an invalid attachment response.';
+            exit(false);
+        end;
+
+        AttachmentId := GetJsonValueText(ResponseObj, 'id');
+
+        ResponseMsg := GetJsonValueText(ResponseObj, 'description');
 
         if ResponseMsg = '' then
-            ResponseMsg := 'Failed to add SHA claim attachment.';
+            ResponseMsg := GetJsonValueText(ResponseObj, 'message');
 
-        exit(false);
+        if ResponseMsg = '' then
+            ResponseMsg := 'Claim attachment added successfully.';
+
+        exit(true);
     end;
 
-    ResponseCode := HttpStatusCode;
+    procedure RemoveClaimAttachment(
+        ConsentToken: Text;
+        AttachmentId: Text;
+        InterventionCode: Text;
+        var ResponseCode: Integer;
+        var ResponseMsg: Text): Boolean
+    var
+        ShaHttpClient: Codeunit "SHA Http Client";
+        PayloadObj: JsonObject;
+        ResponseObj: JsonObject;
+        PayloadText: Text;
+        ResponseText: Text;
+        HttpStatusCode: Integer;
+    begin
+        ResponseCode := 0;
+        ResponseMsg := '';
 
-    // ============================================================
-    // PARSE RESPONSE
-    // ============================================================
+        // ============================================================
+        // VALIDATION
+        // ============================================================
 
-    if not ResponseObj.ReadFrom(ResponseText) then begin
-        ResponseMsg := 'SHA returned an invalid attachment response.';
-        exit(false);
-    end;
+        if ConsentToken = '' then begin
+            ResponseMsg := 'SHA consent token is required.';
+            exit(false);
+        end;
 
-    AttachmentId := GetJsonValueText(ResponseObj, 'id');
+        if AttachmentId = '' then begin
+            ResponseMsg := 'SHA attachment ID is required.';
+            exit(false);
+        end;
 
-    ResponseMsg := GetJsonValueText(ResponseObj, 'description');
+        if InterventionCode = '' then begin
+            ResponseMsg := 'SHA intervention code is required.';
+            exit(false);
+        end;
 
-    if ResponseMsg = '' then
-        ResponseMsg := GetJsonValueText(ResponseObj, 'message');
+        // ============================================================
+        // BUILD PAYLOAD
+        // ============================================================
 
-    if ResponseMsg = '' then
-        ResponseMsg := 'Claim attachment added successfully.';
+        PayloadObj.Add('attachment_id', AttachmentId);
+        PayloadObj.Add('consent_token', ConsentToken);
+        PayloadObj.Add('intervention_code', InterventionCode);
 
-    exit(true);
-end;
+        PayloadObj.WriteTo(PayloadText);
 
-procedure RemoveClaimAttachment(
-    ConsentToken: Text;
-    AttachmentId: Text;
-    InterventionCode: Text;
-    var ResponseCode: Integer;
-    var ResponseMsg: Text): Boolean
-var
-    ShaHttpClient: Codeunit "SHA Http Client";
-    PayloadObj: JsonObject;
-    ResponseObj: JsonObject;
-    PayloadText: Text;
-    ResponseText: Text;
-    HttpStatusCode: Integer;
-begin
-    ResponseCode := 0;
-    ResponseMsg := '';
+        ShaHttpClient.SetLogContext('', '', ConsentToken);
 
-    // ============================================================
-    // VALIDATION
-    // ============================================================
+        // ============================================================
+        // REMOVE ATTACHMENT
+        // ============================================================
 
-    if ConsentToken = '' then begin
-        ResponseMsg := 'SHA consent token is required.';
-        exit(false);
-    end;
+        if not ShaHttpClient.SendJson(
+            'PATCH',
+            '/api/v1/claims/attachments',
+            PayloadText,
+            ResponseText,
+            HttpStatusCode)
+        then begin
+            ResponseCode := HttpStatusCode;
+            ResponseMsg := ParseSHAErrorMessage(ResponseText);
 
-    if AttachmentId = '' then begin
-        ResponseMsg := 'SHA attachment ID is required.';
-        exit(false);
-    end;
+            if ResponseMsg = '' then
+                ResponseMsg := 'Failed to remove SHA claim attachment.';
 
-    if InterventionCode = '' then begin
-        ResponseMsg := 'SHA intervention code is required.';
-        exit(false);
-    end;
+            exit(false);
+        end;
 
-    // ============================================================
-    // BUILD PAYLOAD
-    // ============================================================
-
-    PayloadObj.Add('attachment_id', AttachmentId);
-    PayloadObj.Add('consent_token', ConsentToken);
-    PayloadObj.Add('intervention_code', InterventionCode);
-
-    PayloadObj.WriteTo(PayloadText);
-
-    ShaHttpClient.SetLogContext('', '', ConsentToken);
-
-    // ============================================================
-    // REMOVE ATTACHMENT
-    // ============================================================
-
-    if not ShaHttpClient.SendJson(
-        'PATCH',
-        '/api/v1/claims/attachments',
-        PayloadText,
-        ResponseText,
-        HttpStatusCode)
-    then begin
         ResponseCode := HttpStatusCode;
-        ResponseMsg := ParseSHAErrorMessage(ResponseText);
+
+        // ============================================================
+        // RESPONSE
+        // ============================================================
+
+        if ResponseObj.ReadFrom(ResponseText) then begin
+            ResponseMsg := GetJsonValueText(ResponseObj, 'message');
+
+            if ResponseMsg = '' then
+                ResponseMsg := GetJsonValueText(ResponseObj, 'description');
+        end;
 
         if ResponseMsg = '' then
-            ResponseMsg := 'Failed to remove SHA claim attachment.';
+            ResponseMsg := 'Claim attachment removed successfully.';
 
-        exit(false);
+        exit(true);
     end;
 
-    ResponseCode := HttpStatusCode;
-
-    // ============================================================
-    // RESPONSE
-    // ============================================================
-
-    if ResponseObj.ReadFrom(ResponseText) then begin
-        ResponseMsg := GetJsonValueText(ResponseObj, 'message');
-
-        if ResponseMsg = '' then
-            ResponseMsg := GetJsonValueText(ResponseObj, 'description');
-    end;
-
-    if ResponseMsg = '' then
-        ResponseMsg := 'Claim attachment removed successfully.';
-
-    exit(true);
-end;
     procedure ServiceTypeToText(ServiceType: Enum "SHA Service Type"): Text
     begin
         case ServiceType of
@@ -3887,37 +3893,425 @@ end;
         exit(FullName);
     end;
 
-local procedure ParseSHAErrorMessage(ResponseText: Text): Text
-var
-    ResponseObj: JsonObject;
-    DataToken: JsonToken;
-    Result: Text;
-begin
-    if ResponseText = '' then
-        exit('');
+    local procedure ParseSHAErrorMessage(ResponseText: Text): Text
+    var
+        ResponseObj: JsonObject;
+        DataToken: JsonToken;
+        Result: Text;
+    begin
+        if ResponseText = '' then
+            exit('');
 
-    if not ResponseObj.ReadFrom(ResponseText) then
+        if not ResponseObj.ReadFrom(ResponseText) then
+            exit(ResponseText);
+
+        Result := GetJsonValueText(ResponseObj, 'message');
+
+        if Result <> '' then
+            exit(Result);
+
+        Result := GetJsonValueText(ResponseObj, 'detail');
+
+        if Result <> '' then
+            exit(Result);
+
+        Result := GetJsonValueText(ResponseObj, 'description');
+
+        if Result <> '' then
+            exit(Result);
+
+        if ResponseObj.Get('error', DataToken) then
+            if DataToken.IsValue() then
+                exit(DataToken.AsValue().AsText());
+
         exit(ResponseText);
+    end;
 
-    Result := GetJsonValueText(ResponseObj, 'message');
 
-    if Result <> '' then
-        exit(Result);
 
-    Result := GetJsonValueText(ResponseObj, 'detail');
 
-    if Result <> '' then
-        exit(Result);
+    procedure InitiateNormalOFSPreauth(consentCode: Code[100]; patientID: Code[100]; interventionCode: Code[50]; var ResponseMsg: Text; authorizationCode: Text): Boolean
+    var
+        tbl_claimDiagnoses: Record "SHA Claim Diagnosis";
+        tbl_appointmentHeader: Record "HMS Appointment Form Header";
+        tbl_shaClaimHeader: Record "SHA Claim Header";
+        tbl_shaClaimLine: Record "SHA Claim Line";
+        tbl_doctorSetup: Record "HMS Setup Doctor";
+        tbl_shaPatientInterventionCache: Record "SHA Patient Intervention Cache";
+        claimItems: JsonArray;
+        diagnoses: JsonArray;
+        doctors: JsonArray;
+        attachments: JsonArray;
+        singleObject: JsonObject;
+        completePayloadObject: JsonObject;
 
-    Result := GetJsonValueText(ResponseObj, 'description');
+        documentLabel: Text;
+        responseObj: JsonObject;
+        authorizationDetails: JsonObject;
 
-    if Result <> '' then
-        exit(Result);
+        authorizationReason: Text;
+        SHAclient_CU: Codeunit "SHA Http Client";
+        responseText: Text;
+        HttpStatusCode: Integer;
+        PayloadText: Text;
+        ResponseCode: Integer;
 
-    if ResponseObj.Get('error', DataToken) then
-        if DataToken.IsValue() then
-            exit(DataToken.AsValue().AsText());
+        errorCode: Integer;
+        errorMessage: Text;
+        authorizationDetailsTxt: Text;
+        authorizationStatus: Text;
+        ShaHttpClient: Codeunit "SHA Http Client";
+        MultipartContent: HttpContent;
+        FileInStream: InStream;
+        tbl_patientDocuments: Record "Document Attachment";
+        documentReferenceID: GUID;
+        tbl_tenantMedia: Record "Tenant Media";
+        selectedDocumentType: Text;
+        enum_SHADocumentTypes: Enum "SHA Attachment Document Type";
+        tbl_interventionPreauth: Record "Intervention PreAuthorization";
 
-    exit(ResponseText);
-end;
+
+    begin
+        // ensure that the appointmentHeader actually exists
+        tbl_appointmentHeader.Reset();
+        tbl_appointmentHeader.SetRange("SHA Consent Request ID", consentCode);
+        if not tbl_appointmentHeader.FindFirst() then begin
+            ResponseMsg :=
+                'Sorry, we could not find an appointment visit with the consent code provided. Kindly try again. Contact the administrator if this error persists';
+            exit(false);
+        end;
+
+
+        // ensure that the intervention requires a preauth
+        tbl_shaPatientInterventionCache.Reset();
+        tbl_shaPatientInterventionCache.SetRange("Patient CR ID", patientID);
+        tbl_shaPatientInterventionCache.SetRange(Code, interventionCode);
+        tbl_shaPatientInterventionCache.SetRange("Needs Preauth", true);
+        if not tbl_shaPatientInterventionCache.FindFirst() then begin
+            ResponseMsg :=
+              'Sorry, we could not find the intervention code, or preauth is not required for this intervention code. Kindly try again. Contact the administrator if this error persists';
+            exit(false);
+        end;
+        // prepare diagnoses for the patient that are tied to the intervention code
+        tbl_claimDiagnoses.Reset();
+        tbl_claimDiagnoses.SetRange("Intervention Code", interventionCode);
+        tbl_claimDiagnoses.SetRange("Consent Token", consentCode);
+        if not tbl_claimDiagnoses.FindSet(true) then begin
+            ResponseMsg :=
+               'Sorry, we could not find any diagnoses related to the intervention code you are requesting for a Preauth. Kindly ensure you add atleast 1 diagnosis before requesting a preauth. Contact the administrator if this error persists';
+            exit(false);
+        end;
+        repeat
+            Clear(singleObject);
+            singleObject.Add('consent_token', consentCode);
+            singleObject.Add('icd_code', tbl_claimDiagnoses."Diagnosis Code");
+            diagnoses.Add(singleObject);
+
+        until tbl_claimDiagnoses.Next() = 0;
+
+        // prepare claim items for the patient that are tied to the intervention code
+        tbl_shaClaimLine.Reset();
+        tbl_shaClaimLine.SetRange("Intervention Code", interventionCode);
+        tbl_shaClaimLine.SetRange("Consent Token", consentCode);
+        if not tbl_shaClaimLine.FindSet(true) then begin
+            ResponseMsg :=
+              'Sorry, we could not find any claim line related to the intervention code you are requesting for a Preauth. Kindly ensure you add atleast 1 claim line before requesting a preauth. Contact the administrator if this error persists';
+            exit(false);
+        end;
+        repeat
+            Clear(singleObject);
+            singleObject.Add('unit_price', tbl_shaClaimLine."Line Total Amount");
+            claimItems.Add(singleObject);
+
+        until tbl_shaClaimLine.Next() = 0;
+
+        // fetch doctor information from the appointment header --> For now we'll have only a single doctor per visit/claim
+        tbl_doctorSetup.Reset();
+        tbl_doctorSetup.SetRange("Proffesional Registration No.", tbl_appointmentHeader.Doctor);
+        if not tbl_doctorSetup.FindFirst() then begin
+            ResponseMsg :=
+              'Sorry, we could not find the doctor information from the doctor setup. Kindly ensure that the doctor information exists';
+            exit(false);
+        end;
+
+        Clear(singleObject);
+        singleObject.Add('identification_number', tbl_doctorSetup."Proffesional Registration No.");
+        singleObject.Add('intervention_code', interventionCode);
+        singleObject.Add('is_primary', tbl_doctorSetup.Resident);
+        singleObject.Add('identification_type', tbl_doctorSetup.practitioner_identification_type);
+        singleObject.Add('regulation_body', tbl_doctorSetup.practitioner_regulation_body);
+        doctors.Add(singleObject);
+
+        // Attachments
+        // fetch the intervention documents
+
+        if tbl_shaPatientInterventionCache."Required Preauth Document Types" = ''
+ then begin
+            ResponseMsg :=
+                     'Sorry, we could not find any documents tied to your intervention code, kindly try again. Contact the administrator if this error persists';
+            exit(false);
+        end;
+        tbl_patientDocuments.Reset();
+        tbl_patientDocuments.SetRange("Intervention Code", interventionCode);
+        tbl_patientDocuments.SetRange("Patient CR ID", patientID);
+        tbl_patientDocuments.SetRange("Consent Code", consentCode);
+        if tbl_patientDocuments.FindSet(true) then begin
+            repeat
+                if tbl_patientDocuments."Document Reference ID".HasValue then begin
+
+                    documentReferenceID := tbl_patientDocuments."Document Reference ID".MediaId;
+                    IF tbl_tenantMedia.get(documentReferenceID) then begin
+                        selectedDocumentType := '';
+                        Clear(singleObject);
+                        tbl_tenantMedia.CalcFields(Content);
+                        tbl_tenantMedia.Content.CreateInStream(FileInStream);
+                        selectedDocumentType := tbl_patientDocuments."SHA Document Type".Names.Get(enum_SHADocumentTypes.Ordinals.IndexOf(enum_SHADocumentTypes));
+                        documentLabel := selectedDocumentType + '_' + patientID;
+                        singleObject.Add('document_type', selectedDocumentType);
+                        singleObject.Add('document_title', documentLabel);
+                        singleObject.Add('file_field_name', Format(tbl_tenantMedia.Content));
+                        attachments.Add(singleObject);
+
+                    end
+
+                end
+
+
+            until tbl_patientDocuments.Next() = 0;
+        end;
+
+
+        Clear(completePayloadObject);
+        completePayloadObject.Add('consent_token', consentCode);
+        completePayloadObject.Add('intervention_code', interventionCode);
+        completePayloadObject.Add('service_start', tbl_appointmentHeader."SHA Visit Start");
+        completePayloadObject.Add('service_end', CurrentDateTime);
+        completePayloadObject.Add('doctors', doctors);
+        completePayloadObject.Add('provider_notification_email', 'marwamoronya@gmail.com'); // value is hardcoded for now, however, it should be setup based
+        completePayloadObject.Add('items', claimItems);
+        completePayloadObject.Add('diagnoses', diagnoses);
+        completePayloadObject.Add('attachments', attachments);
+
+        authorizationCode := '';
+        authorizationReason := '';
+        ResponseCode := 0;
+        ResponseMsg := '';
+        authorizationStatus := '';
+
+        completePayloadObject.WriteTo(
+                   PayloadText);
+        if not SHAclient_CU.SendJson(
+           'POST',
+           '/api/v1/preauths',
+           PayloadText,
+           responseText,
+           HttpStatusCode)
+       then begin
+
+
+            ResponseCode :=
+                HttpStatusCode;
+
+            ResponseMsg :=
+                'Failed to send SHA Preaauthorization request.';
+
+            exit(false);
+        end;
+        if not responseObj.ReadFrom(responseText) then
+            exit(false);
+
+        ResponseCode :=
+            HttpStatusCode;
+
+        // =========================================================
+        // HTTP FAILURE
+        // =========================================================
+
+        if (HttpStatusCode <> 200) and
+           (HttpStatusCode <> 201)
+        then begin
+
+            authorizationDetailsTxt := GetJsonValueText(
+                           responseObj,
+                           'authorizationDetails');
+            authorizationDetails.ReadFrom(authorizationDetailsTxt);
+
+            authorizationCode := GetJsonValueText(
+                authorizationDetails,
+                'authCode'
+            );
+            authorizationReason := GetJsonValueText(
+                authorizationDetails,
+                'authorizationReason'
+            );
+            authorizationStatus := GetJsonValueText(responseObj, 'status');
+
+            ResponseMsg :=
+              'SHA Preauthorization Initiated successfully. Kindly check your phone for a preauthorization code';
+
+            // update the interventions that preauth was successfully sent
+            tbl_shaPatientInterventionCache."Preauth Received" := true;
+            tbl_interventionPreauth.Init();
+            tbl_interventionPreauth."Patient CR ID" := patientID;
+            tbl_interventionPreauth."Intervention Code" := interventionCode;
+            tbl_interventionPreauth."Consent Code" := consentCode;
+            tbl_interventionPreauth."Preauth Code" := authorizationCode;
+            tbl_interventionPreauth."Authorization Reason" := authorizationReason;
+            tbl_interventionPreauth.Insert();
+            exit(true);
+        end else begin
+            // indicate why the request failed
+            errorCode := 0;
+            errorMessage := '';
+            ResponseMsg :=
+                   GetJsonValueText(
+                       responseObj,
+                       'message');
+            ResponseMsg :=
+             Format(errorCode) + '-' + errorMessage;
+            exit(false);
+        end;
+
+    end;
+
+
+    procedure SaveAttachmentLocally(
+       ConsentToken: Text;
+       InterventionCode: Text;
+       shaDocumentType: Integer;
+       FileName: Text;
+       attachment: Text;
+       FileContentType: Text;
+       claimHeaderNo: Code[50];
+       TableID: Integer;
+       var ResponseMsg: Text): Boolean
+    var
+        ShaHttpClient: Codeunit "SHA Http Client";
+        tempBlob_CU: Codeunit "Temp Blob";
+        out_stream: OutStream;
+        in_stream: InStream;
+        base64Convert_CU: Codeunit "Base64 Convert";
+        tbl_shaClaimHeader: Record "SHA Claim Header";
+        FromRecRef: RecordRef;
+        tbl_docAttachment: Record "Document Attachment";
+        tableFound: Boolean;
+
+
+
+    begin
+
+        ResponseMsg := '';
+
+
+        if ConsentToken = '' then begin
+            ResponseMsg := 'SHA consent token is required.';
+            exit(false);
+        end;
+
+        if InterventionCode = '' then begin
+            ResponseMsg := 'SHA intervention code is required.';
+            exit(false);
+        end;
+
+
+
+        if FileName = '' then begin
+            ResponseMsg := 'Attachment file name is required.';
+            exit(false);
+        end;
+
+
+
+        if FileContentType = '' then
+            FileContentType := ShaHttpClient.GetContentType(FileName);
+        tableFound := false;
+
+        if tableID = Database::"SHA Claim Header" then begin
+            tbl_shaClaimHeader.Reset();
+            tbl_shaClaimHeader.SetRange("Claim No.", claimHeaderNo);
+            if tbl_shaClaimHeader.FindFirst() then begin
+                FromRecRef.GetTable(tbl_shaClaimHeader);
+                tableFound := true;
+            end else begin
+                ResponseMsg := 'Could not find the claim header No to tie the document to.';
+                exit(false);
+            end;
+        end;
+
+        if not tableFound then begin
+            ResponseMsg := 'Could not find the table to tie the document to. No table filter found ';
+            exit(false);
+        end;
+
+        if FileName <> '' then begin
+            Clear(tbl_docAttachment);
+            tempBlob_CU.CreateOutStream(out_stream, TEXTENCODING::UTF8);
+            base64Convert_CU.FromBase64(attachment, out_stream);
+            tempBlob_CU.CreateInStream(in_stream, TEXTENCODING::UTF8);
+
+            tbl_docAttachment.Init();
+            tbl_docAttachment.Validate("File Extension", FileContentType);
+            tbl_docAttachment.Validate("File Name", FileName);
+            tbl_docAttachment.Validate("Table ID", FromRecRef.Number);
+            tbl_docAttachment.Validate("No.", claimHeaderNo);
+            tbl_docAttachment."Consent Code" := ConsentToken;
+            tbl_docAttachment."Intervention Code" := InterventionCode;
+            tbl_docAttachment."SHA Document Type" := shaDocumentType;
+
+            tbl_docAttachment."Document Reference ID".ImportStream(in_stream, '', FileName);
+            if tbl_docAttachment.Insert(true) then begin
+                ResponseMsg := 'Document uploaded successfully.';
+                exit(true);
+            end;
+        end else begin
+            ResponseMsg := 'No file to upload.';
+            exit(false);
+        end;
+
+    end;
+
+
+    procedure DeleteAttachmentLocally(
+        DocNo: Code[30];
+        TableID: Integer; DocID: Integer;
+     var ResponseMsg: Text): Boolean
+    var
+
+        tbl_docAttachment: Record "Document Attachment";
+
+
+    begin
+
+        ResponseMsg := '';
+
+
+
+        tbl_docAttachment.Reset();
+        tbl_docAttachment.SetRange("Table ID", TableID);
+        tbl_docAttachment.SetRange("No.", DocNo);
+        tbl_docAttachment.SetRange(ID, DocID);
+        if not tbl_docAttachment.FindFirst() then begin
+            ResponseMsg := 'Could not find the document to be deleted.';
+            exit(false);
+        end;
+        if tbl_docAttachment."Document Reference ID".HasValue then begin
+            clear(tbl_docAttachment."Document Reference ID");
+            if tbl_docAttachment.Modify(true) then begin
+                ResponseMsg := 'File deleted successfully.';
+                exit(false);
+            end else begin
+                ResponseMsg := 'An error occurred when deleting your file. Kindly try again. Contact the administrator if this error persists.';
+                exit(false);
+            end;
+        end else begin
+            ResponseMsg := 'Could not find the document reference ID to be deleted.';
+            exit(false);
+        end;
+
+    end;
+
+
+
+
+
 }

@@ -123,6 +123,15 @@ codeunit 90013 "SHA Portal Service"
         FileContentType: Text;
         DocumentType: Text;
         AttachmentId: Text;
+        tableId: Integer;
+        docID: Integer;
+        shaDocumentType: Integer;
+
+        items: JsonArray;
+        diagnoses: JsonArray;
+        doctors: JsonArray;
+        service_start: Text;
+        service_end: Text;
     begin
         // ============================================================
         // VALIDATE JSON
@@ -1546,6 +1555,158 @@ codeunit 90013 "SHA Portal Service"
 
                     exit(BuildSuccessResponse(ResponseMsg, DataObj));
                 end;
+
+            // Preauthorize
+
+            'preauthorizeConsent':
+                begin
+                    Clear(DataObj);
+                    if not GetRequiredText(
+                        JObject,
+                        'ConsentRequestId',
+                        ConsentRequestId)
+                    then
+                        exit(
+                            BuildErrorResponse(
+                                'consent token is required.'));
+
+                    if not GetRequiredText(
+                        JObject,
+                        'InterventionCode',
+                        InterventionCode)
+                    then
+                        exit(
+                            BuildErrorResponse(
+                                'Intervention Code is required.'));
+
+
+
+                    if not ShaApiManagement.InitiateNormalOFSPreauth(
+                        ConsentRequestId,
+                       PatientCrId, InterventionCode, ResponseMsg, authorizationCode)
+                    then
+                        exit(BuildErrorResponse(ResponseMsg));
+                    // Amos -> fetch OTP on success -- this should not happen on prod, remove it
+                    DataObj.Add('authorizationCode', authorizationCode);
+                    exit(BuildSuccessResponse(ResponseMsg, DataObj));
+
+                end;
+
+            'addDocumentLocally':
+                begin
+                    if not GetRequiredText(JObject, 'appointmentNo', AppointmentNoText) then
+                        exit(BuildErrorResponse('appointmentNo is required.'));
+
+                    if not GetRequiredText(JObject, 'interventionCode', InterventionCode) then
+                        exit(BuildErrorResponse('interventionCode is required.'));
+
+
+                    if not GetRequiredText(JObject, 'fileName', FileName) then
+                        exit(BuildErrorResponse('fileName is required.'));
+
+                    if not GetRequiredText(JObject, 'fileBase64', FileBase64) then
+                        exit(BuildErrorResponse('fileBase64 is required.'));
+                    tableId := GetOptionalInteger(JObject, 'tableId');
+
+                    if tableId = 0 then
+                        exit(BuildErrorResponse('Table ID is required.'));
+                    shaDocumentType := GetOptionalInteger(JObject, 'shaDocumentType');
+
+
+                    FileContentType := '';
+                    GetOptionalText(JObject, 'fileContentType', FileContentType);
+
+                    AppointmentNo := CopyStr(AppointmentNoText, 1, MaxStrLen(AppointmentNo));
+
+                    if not Appointment.Get(AppointmentNo) then
+                        exit(BuildErrorResponse(
+                            StrSubstNo('Appointment %1 was not found.', AppointmentNo)));
+
+                    if Appointment."SHA Authorization Code" = '' then
+                        exit(BuildErrorResponse(
+                            StrSubstNo('Appointment %1 does not have a SHA authorization code.', AppointmentNo)));
+
+                    Clear(TempAttachmentBlob);
+
+
+
+                    ResponseMsg := '';
+
+
+
+                    if not ShaApiManagement.SaveAttachmentLocally(
+                       ConsentRequestId,
+                        InterventionCode,
+                        shaDocumentType,
+                        FileName,
+                        FileBase64,
+                        FileContentType,
+                         Appointment."SHA Claim No.",
+                        tableID,
+                        ResponseMsg)
+                    then
+                        exit(BuildErrorResponse(ResponseMsg));
+
+                    Clear(DataObj);
+
+
+                    exit(BuildSuccessResponse(ResponseMsg, DataObj));
+                end;
+
+
+            // ========================================================
+            // REMOVE CLAIM ATTACHMENT
+            // ========================================================
+
+            'removeDocumentLocally':
+                begin
+                    if not GetRequiredText(JObject, 'appointmentNo', AppointmentNoText) then
+                        exit(BuildErrorResponse('appointmentNo is required.'));
+
+
+                    docID := GetOptionalInteger(JObject, 'docId');
+
+                    if docID = 0 then
+                        exit(BuildErrorResponse('Doc ID is required.'));
+                    tableId := GetOptionalInteger(
+                       JObject,
+                       'tableId');
+
+                    if tableId = 0 then
+                        exit(BuildErrorResponse('Table ID is required.'));
+
+                    if not GetRequiredText(JObject, 'interventionCode', InterventionCode) then
+                        exit(BuildErrorResponse('interventionCode is required.'));
+
+                    AppointmentNo := CopyStr(AppointmentNoText, 1, MaxStrLen(AppointmentNo));
+
+                    if not Appointment.Get(AppointmentNo) then
+                        exit(BuildErrorResponse(
+                            StrSubstNo('Appointment %1 was not found.', AppointmentNo)));
+
+                    if Appointment."SHA Authorization Code" = '' then
+                        exit(BuildErrorResponse(
+                            StrSubstNo('Appointment %1 does not have a SHA authorization code.', AppointmentNo)));
+
+                    ResponseCode := 0;
+                    ResponseMsg := '';
+
+
+
+                    if not ShaApiManagement.DeleteAttachmentLocally(
+                        Appointment."SHA Claim No.",
+                        tableId,
+                        docID,
+                        ResponseMsg)
+                    then
+                        exit(BuildErrorResponse(ResponseMsg));
+
+                    Clear(DataObj);
+
+                    exit(BuildSuccessResponse(ResponseMsg, DataObj));
+                end;
+
+
             // ========================================================
             // INVALID ACTION
             // ========================================================

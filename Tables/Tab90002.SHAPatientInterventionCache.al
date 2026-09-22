@@ -175,6 +175,11 @@ table 90008 "SHA Patient Intervention Cache"
         {
             Caption = 'Active';
         }
+
+        field(35; "Preauth Received"; Boolean)
+        {
+            Caption = 'Preauth Received';
+        }
     }
 
     keys
