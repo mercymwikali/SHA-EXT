@@ -132,6 +132,7 @@ codeunit 90013 "SHA Portal Service"
         doctors: JsonArray;
         service_start: Text;
         service_end: Text;
+        claimHeaderNo: Text;
     begin
         // ============================================================
         // VALIDATE JSON
@@ -1558,22 +1559,30 @@ codeunit 90013 "SHA Portal Service"
 
             // Preauthorize
 
-            'preauthorizeConsent':
+            'preauthorizeconsent':
                 begin
                     Clear(DataObj);
                     if not GetRequiredText(
                         JObject,
-                        'ConsentRequestId',
-                        ConsentRequestId)
+                        'consentRequestId',
+                        consentRequestId)
                     then
                         exit(
                             BuildErrorResponse(
                                 'consent token is required.'));
+                    if not GetRequiredText(
+          JObject,
+          'patientCrId',
+          patientCrId)
+      then
+                        exit(
+                            BuildErrorResponse(
+                                'Patient CR ID is required.'));
 
                     if not GetRequiredText(
                         JObject,
-                        'InterventionCode',
-                        InterventionCode)
+                        'interventionCode',
+                        interventionCode)
                     then
                         exit(
                             BuildErrorResponse(
@@ -1582,8 +1591,8 @@ codeunit 90013 "SHA Portal Service"
 
 
                     if not ShaApiManagement.InitiateNormalOFSPreauth(
-                        ConsentRequestId,
-                       PatientCrId, InterventionCode, ResponseMsg, authorizationCode)
+                        consentRequestId,
+                       patientCrId, interventionCode, ResponseMsg, authorizationCode)
                     then
                         exit(BuildErrorResponse(ResponseMsg));
                     // Amos -> fetch OTP on success -- this should not happen on prod, remove it
@@ -1594,17 +1603,19 @@ codeunit 90013 "SHA Portal Service"
 
             'addDocumentLocally':
                 begin
-                    if not GetRequiredText(JObject, 'appointmentNo', AppointmentNoText) then
-                        exit(BuildErrorResponse('appointmentNo is required.'));
+                    if not GetRequiredText(JObject, 'claimHeaderNo', claimHeaderNo) then
+                        exit(BuildErrorResponse('Claim Header No is required.'));
 
-                    if not GetRequiredText(JObject, 'interventionCode', InterventionCode) then
+                    if not GetRequiredText(JObject, 'interventionCode', interventionCode) then
                         exit(BuildErrorResponse('interventionCode is required.'));
 
 
-                    if not GetRequiredText(JObject, 'fileName', FileName) then
+                    if not GetRequiredText(JObject, 'fileName', fileName) then
                         exit(BuildErrorResponse('fileName is required.'));
 
-                    if not GetRequiredText(JObject, 'fileBase64', FileBase64) then
+                    if not GetRequiredText(JObject, 'fileBase64', fileBase64) then
+                        exit(BuildErrorResponse('fileBase64 is required.'));
+                    if not GetRequiredText(JObject, 'fileContentType', fileContentType) then
                         exit(BuildErrorResponse('fileBase64 is required.'));
                     tableId := GetOptionalInteger(JObject, 'tableId');
 
@@ -1613,20 +1624,7 @@ codeunit 90013 "SHA Portal Service"
                     shaDocumentType := GetOptionalInteger(JObject, 'shaDocumentType');
 
 
-                    FileContentType := '';
-                    GetOptionalText(JObject, 'fileContentType', FileContentType);
 
-                    AppointmentNo := CopyStr(AppointmentNoText, 1, MaxStrLen(AppointmentNo));
-
-                    if not Appointment.Get(AppointmentNo) then
-                        exit(BuildErrorResponse(
-                            StrSubstNo('Appointment %1 was not found.', AppointmentNo)));
-
-                    if Appointment."SHA Authorization Code" = '' then
-                        exit(BuildErrorResponse(
-                            StrSubstNo('Appointment %1 does not have a SHA authorization code.', AppointmentNo)));
-
-                    Clear(TempAttachmentBlob);
 
 
 
@@ -1635,13 +1633,12 @@ codeunit 90013 "SHA Portal Service"
 
 
                     if not ShaApiManagement.SaveAttachmentLocally(
-                       ConsentRequestId,
-                        InterventionCode,
+                        interventionCode,
                         shaDocumentType,
-                        FileName,
-                        FileBase64,
-                        FileContentType,
-                         Appointment."SHA Claim No.",
+                        fileName,
+                        fileBase64,
+                        fileContentType,
+                         claimHeaderNo,
                         tableID,
                         ResponseMsg)
                     then

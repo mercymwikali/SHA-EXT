@@ -3996,34 +3996,30 @@ codeunit 90001 "SHA Api Management"
         tbl_claimDiagnoses.Reset();
         tbl_claimDiagnoses.SetRange("Intervention Code", interventionCode);
         tbl_claimDiagnoses.SetRange("Consent Token", consentCode);
-        if not tbl_claimDiagnoses.FindSet(true) then begin
-            ResponseMsg :=
-               'Sorry, we could not find any diagnoses related to the intervention code you are requesting for a Preauth. Kindly ensure you add atleast 1 diagnosis before requesting a preauth. Contact the administrator if this error persists';
-            exit(false);
-        end;
-        repeat
-            Clear(singleObject);
-            singleObject.Add('consent_token', consentCode);
-            singleObject.Add('icd_code', tbl_claimDiagnoses."Diagnosis Code");
-            diagnoses.Add(singleObject);
+        if tbl_claimDiagnoses.FindSet(true) then begin
+            repeat
+                Clear(singleObject);
+                singleObject.Add('consent_token', consentCode);
+                singleObject.Add('icd_code', tbl_claimDiagnoses."Diagnosis Code");
+                diagnoses.Add(singleObject);
 
-        until tbl_claimDiagnoses.Next() = 0;
+            until tbl_claimDiagnoses.Next() = 0;
+        end;
+
 
         // prepare claim items for the patient that are tied to the intervention code
         tbl_shaClaimLine.Reset();
         tbl_shaClaimLine.SetRange("Intervention Code", interventionCode);
         tbl_shaClaimLine.SetRange("Consent Token", consentCode);
-        if not tbl_shaClaimLine.FindSet(true) then begin
-            ResponseMsg :=
-              'Sorry, we could not find any claim line related to the intervention code you are requesting for a Preauth. Kindly ensure you add atleast 1 claim line before requesting a preauth. Contact the administrator if this error persists';
-            exit(false);
-        end;
-        repeat
-            Clear(singleObject);
-            singleObject.Add('unit_price', tbl_shaClaimLine."Line Total Amount");
-            claimItems.Add(singleObject);
+        if tbl_shaClaimLine.FindSet(true) then begin
+            repeat
+                Clear(singleObject);
+                singleObject.Add('unit_price', tbl_shaClaimLine."Line Total Amount");
+                claimItems.Add(singleObject);
 
-        until tbl_shaClaimLine.Next() = 0;
+            until tbl_shaClaimLine.Next() = 0;
+        end;
+
 
         // fetch doctor information from the appointment header --> For now we'll have only a single doctor per visit/claim
         tbl_doctorSetup.Reset();
@@ -4045,12 +4041,7 @@ codeunit 90001 "SHA Api Management"
         // Attachments
         // fetch the intervention documents
 
-        if tbl_shaPatientInterventionCache."Required Preauth Document Types" = ''
- then begin
-            ResponseMsg :=
-                     'Sorry, we could not find any documents tied to your intervention code, kindly try again. Contact the administrator if this error persists';
-            exit(false);
-        end;
+
         tbl_patientDocuments.Reset();
         tbl_patientDocuments.SetRange("Intervention Code", interventionCode);
         tbl_patientDocuments.SetRange("Patient CR ID", patientID);
@@ -4151,6 +4142,7 @@ codeunit 90001 "SHA Api Management"
 
             // update the interventions that preauth was successfully sent
             tbl_shaPatientInterventionCache."Preauth Received" := true;
+            tbl_shaPatientInterventionCache.Modify(true);
             tbl_interventionPreauth.Init();
             tbl_interventionPreauth."Patient CR ID" := patientID;
             tbl_interventionPreauth."Intervention Code" := interventionCode;
@@ -4176,15 +4168,14 @@ codeunit 90001 "SHA Api Management"
 
 
     procedure SaveAttachmentLocally(
-       ConsentToken: Text;
-       InterventionCode: Text;
+       interventionCode: Text;
        shaDocumentType: Integer;
-       FileName: Text;
-       attachment: Text;
-       FileContentType: Text;
+       fileName: Text;
+       attachment: Text; //base64 
+       fileContentType: Text;
        claimHeaderNo: Code[50];
-       TableID: Integer;
-       var ResponseMsg: Text): Boolean
+       tableId: Integer;
+       var responseMsg: Text): Boolean
     var
         ShaHttpClient: Codeunit "SHA Http Client";
         tempBlob_CU: Codeunit "Temp Blob";
@@ -4196,19 +4187,14 @@ codeunit 90001 "SHA Api Management"
         tbl_docAttachment: Record "Document Attachment";
         tableFound: Boolean;
 
-
-
     begin
 
         ResponseMsg := '';
 
 
-        if ConsentToken = '' then begin
-            ResponseMsg := 'SHA consent token is required.';
-            exit(false);
-        end;
 
-        if InterventionCode = '' then begin
+
+        if interventionCode = '' then begin
             ResponseMsg := 'SHA intervention code is required.';
             exit(false);
         end;
@@ -4254,7 +4240,7 @@ codeunit 90001 "SHA Api Management"
             tbl_docAttachment.Validate("File Name", FileName);
             tbl_docAttachment.Validate("Table ID", FromRecRef.Number);
             tbl_docAttachment.Validate("No.", claimHeaderNo);
-            tbl_docAttachment."Consent Code" := ConsentToken;
+            tbl_docAttachment."Consent Code" := tbl_shaClaimHeader."Consent Request ID";
             tbl_docAttachment."Intervention Code" := InterventionCode;
             tbl_docAttachment."SHA Document Type" := shaDocumentType;
 
