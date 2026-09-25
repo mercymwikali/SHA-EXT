@@ -73,17 +73,125 @@ codeunit 90014 "SHA Claim Processing"
         exit(ClaimHeader.FindFirst());
     end;
 
-    /// <summary>
-    /// Loads a claim directly using the internal claim number.
-    /// </summary>
-    procedure GetClaim(ClaimNo: Code[20]; var ClaimHeader: Record "SHA Claim Header"): Boolean
-    begin
-        if ClaimNo = '' then
-            exit(false);
+  procedure GetClaim(
+    ClaimNo: Code[20];
+    var ClaimHeader: Record "SHA Claim Header"): Boolean
+var
+    PreviewResponse: Text;
+    ResponseMsg: Text;
+    ResponseCode: Integer;
+begin
+    if (ClaimNo = '') or not ClaimHeader.Get(ClaimNo) then
+        exit(false);
 
-        exit(ClaimHeader.Get(ClaimNo));
-    end;
+    // The SHA close request has already completed before this is called.
+    // Do not discard the local claim if the subsequent refresh fails.
+    if not PreviewProviderClaim(
+        ClaimHeader."Appointment No.",
+        PreviewResponse,
+        ResponseCode,
+        ResponseMsg)
+    then
+        exit(true);
 
+    UpdateClaimHeaderFromPreview(ClaimHeader, PreviewResponse);
+    exit(ClaimHeader.Get(ClaimNo));
+end;
+local procedure UpdateClaimHeaderFromPreview(
+    var ClaimHeader: Record "SHA Claim Header";
+    PreviewResponse: Text)
+var
+    Preview: JsonObject;
+    Token: JsonToken;
+    ValueText: Text;
+begin
+    if not Preview.ReadFrom(PreviewResponse) then
+        exit;
+
+    if Preview.Get('workflow_state', Token) then
+        if Token.IsValue() then
+            if not Token.AsValue().IsNull() then begin
+                ValueText := Token.AsValue().AsText();
+                ClaimHeader."Claim Status" :=
+                    CopyStr(ValueText, 1, MaxStrLen(ClaimHeader."Claim Status"));
+
+                case UpperCase(ValueText) of
+                    'CANCELLED', 'CANCELED', 'CLOSED':
+                        ClaimHeader."Processing Status" :=
+                            ClaimHeader."Processing Status"::Cancelled;
+                end;
+            end;
+
+    if Preview.Get('id', Token) then
+        if Token.IsValue() then
+            if not Token.AsValue().IsNull() then
+                ClaimHeader."SHA Claim ID" :=
+                    CopyStr(Token.AsValue().AsText(), 1,
+                        MaxStrLen(ClaimHeader."SHA Claim ID"));
+
+    if Preview.Get('patient_name', Token) then
+        if Token.IsValue() then
+            if not Token.AsValue().IsNull() then
+                ClaimHeader."Patient Name" :=
+                    CopyStr(Token.AsValue().AsText(), 1,
+                        MaxStrLen(ClaimHeader."Patient Name"));
+
+    if Preview.Get('patient_number', Token) then
+        if Token.IsValue() then
+            if not Token.AsValue().IsNull() then
+                ClaimHeader."Patient No." :=
+                    CopyStr(Token.AsValue().AsText(), 1,
+                        MaxStrLen(ClaimHeader."Patient No."));
+
+    if Preview.Get('scheme_code', Token) then
+        if Token.IsValue() then
+            if not Token.AsValue().IsNull() then
+                ClaimHeader."Scheme Code" :=
+                    CopyStr(Token.AsValue().AsText(), 1,
+                        MaxStrLen(ClaimHeader."Scheme Code"));
+
+    if Preview.Get('scheme_name', Token) then
+        if Token.IsValue() then
+            if not Token.AsValue().IsNull() then
+                ClaimHeader."Scheme Name" :=
+                    CopyStr(Token.AsValue().AsText(), 1,
+                        MaxStrLen(ClaimHeader."Scheme Name"));
+
+    if Preview.Get('service_type', Token) then
+        if Token.IsValue() then
+            if not Token.AsValue().IsNull() then
+                ClaimHeader."Service Type" :=
+                    CopyStr(Token.AsValue().AsText(), 1,
+                        MaxStrLen(ClaimHeader."Service Type"));
+
+    if Preview.Get('total_claim_amount', Token) then
+        if Token.IsValue() then
+            if not Token.AsValue().IsNull() then
+                ClaimHeader."Claim Amount" := Token.AsValue().AsDecimal();
+
+    if Preview.Get('visit_start', Token) then
+        if Token.IsValue() then
+            if not Token.AsValue().IsNull() then
+                if Evaluate(ClaimHeader."Visit Start", Token.AsValue().AsText()) then;
+
+    ClaimHeader."Last Status Update" := CurrentDateTime;
+    ClaimHeader."Last Updated At" := CurrentDateTime;
+    ClaimHeader.Modify(true);
+end;
+
+local procedure UpdateTextField(
+    Source: JsonObject;
+    KeyName: Text;
+    var Destination: Text)
+var
+    ValueToken: JsonToken;
+begin
+    if Source.Get(KeyName, ValueToken) then
+        if ValueToken.IsValue() then
+            if not ValueToken.AsValue().IsNull() then
+                Destination := CopyStr(
+                    ValueToken.AsValue().AsText(), 1, MaxStrLen(Destination));
+end;
     /// <summary>
     /// Links all appointment interventions to the generated claim.
     /// This does not duplicate the intervention records.

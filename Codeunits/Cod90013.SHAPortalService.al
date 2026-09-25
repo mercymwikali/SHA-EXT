@@ -55,7 +55,10 @@ codeunit 90013 "SHA Portal Service"
         PractitionerNo: Text;
         PractitionerIdType: Text;
         PractitionerRegulationBody: Text;
-
+        consentToken: Text;
+        cancelReason: Text;
+        cancelType: Text;
+        ResponseText: Text;
         // ============================================================
         // CLAIM LINES
         // ============================================================
@@ -104,6 +107,7 @@ codeunit 90013 "SHA Portal Service"
         InvoiceNumber: Text;
         SchemeCode: Text;
         SchemeName: Text;
+    shaAttachmentId: Text;
 
         DataObj: JsonObject;
 
@@ -492,58 +496,25 @@ codeunit 90013 "SHA Portal Service"
                             ParentSubBenefitCode,
                             'Patient interventions fetched successfully.'));
                 end;
-
-
-            // ========================================================
-            // GET CONTACTS
-            // ========================================================
-
             'getcontacts':
                 begin
-                    if not GetRequiredText(
-                        JObject,
-                        'patientCrId',
-                        PatientCrId)
+                    if not GetRequiredText(JObject, 'patientCrId', PatientCrId)
                     then
-                        exit(
-                            BuildErrorResponse(
-                                'patientCrId is required.'));
+                        exit(BuildErrorResponse('patientCrId is required.'));
 
-                    if not ShaApiManagement.FetchAndCachePatientContacts(
-                        PatientCrId,
-                        ResponseCode,
-                        ResponseMsg)
+                    if not ShaApiManagement.FetchAndCachePatientContacts(PatientCrId, ResponseCode, ResponseMsg)
                     then
-                        exit(
-                            BuildErrorResponse(
-                                ResponseMsg));
+                        exit(BuildErrorResponse(ResponseMsg));
 
-                    exit(
-                        BuildContactsResponse(
-                            PatientCrId,
-                            ResponseMsg));
+                    exit(BuildContactsResponse(PatientCrId, ResponseMsg));
                 end;
-
-
-            // ========================================================
-            // SEND OTP
-            // ========================================================
-
             'sendotp':
                 begin
-                    if not GetRequiredText(
-                        JObject,
-                        'patientCrId',
-                        PatientCrId)
+                    if not GetRequiredText(JObject,'patientCrId', PatientCrId)
                     then
-                        exit(
-                            BuildErrorResponse(
-                                'patientCrId is required.'));
+                        exit(BuildErrorResponse('patientCrId is required.'));
 
-                    ContactId :=
-                        GetOptionalInteger(
-                            JObject,
-                            'contactId');
+                    ContactId :=GetOptionalInteger(JObject, 'contactId');
 
                     if not GetInterventionCodes(
                         JObject,
@@ -636,9 +607,7 @@ codeunit 90013 "SHA Portal Service"
 
                     exit(BuildSuccessResponse(ResponseMsg, DataObj));
                 end;
-            // ========================================================
-            // START VISIT
-            // ========================================================
+           
 
             // ========================================================
             // START SHA VISIT + CREATE HMS APPOINTMENT
@@ -694,13 +663,7 @@ codeunit 90013 "SHA Portal Service"
                         HMSPatient)
                     then
                         exit(
-                            BuildErrorResponse(
-                                StrSubstNo(
-                                    'Unable to identify the HMS patient. Identification Type: %1, Identification Number: %2, Relationship: %3, SHA CR ID: %4.',
-                                    IdentificationType,
-                                    IdentificationNumber,
-                                    Relationship,
-                                    PatientCrId)));
+                            BuildErrorResponse(StrSubstNo('Unable to identify the HMS patient. Identification Type: %1, Identification Number: %2, Relationship: %3, SHA CR ID: %4.',IdentificationType, IdentificationNumber, Relationship,                                  PatientCrId)));
 
                     // ====================================================
                     // CREATE SHA VISIT / VERIFY OTP
@@ -1213,7 +1176,7 @@ codeunit 90013 "SHA Portal Service"
 
                     AppointmentNo := CopyStr(AppointmentNoText, 1, MaxStrLen(AppointmentNo));
 
-                    DischargeStatus := 'FULL';
+                    DischargeStatus := 'OTHER';
                     SubmissionNotes := '';
                     BeneficiaryContactId := '';
 
@@ -1309,6 +1272,50 @@ codeunit 90013 "SHA Portal Service"
                     DataObj.Add('shaResponseCode', ResponseCode);
 
                     exit(BuildSuccessResponse(ResponseMsg, DataObj));
+                end;
+            // ========================================================
+            // CLOSE / CANCEL SHA VIRTUAL CLAIM
+            // ========================================================
+
+            'closeclaim':
+                begin
+                    if not GetRequiredText(JObject, 'consentToken', consentToken) then
+                        exit(BuildErrorResponse('consentToken is required.'));
+
+                    if not GetRequiredText(JObject, 'cancelReason', cancelReason) then
+                        exit(BuildErrorResponse('cancelReason is required.'));
+
+                    if not GetRequiredText(JObject, 'cancelType', cancelType) then
+                        exit(BuildErrorResponse('cancelType is required.'));
+
+                    Clear(ResponseMsg);
+                    Clear(ResponseText);
+                    ResponseCode := 0;
+
+                    if not ShaApiManagement.CloseVirtualClaim(
+                        consentToken,
+                        cancelReason,
+                        cancelType,
+                        ResponseCode,
+                        ResponseMsg,
+                        ResponseText)
+                    then
+                        exit(BuildErrorResponse(ResponseMsg));
+
+                    Clear(DataObj);
+
+                    DataObj.Add('consentToken', ConsentToken);
+                    DataObj.Add('cancelReason', CancelReason);
+                    DataObj.Add('cancelType', CancelType);
+                    DataObj.Add('shaResponseCode', ResponseCode);
+
+                    if ResponseText <> '' then
+                        DataObj.Add('shaResponse', ResponseText);
+
+                    exit(
+                        BuildSuccessResponse(
+                            ResponseMsg,
+                            DataObj));
                 end;
             // ========================================================
             // GET SHA CLAIM
@@ -1570,10 +1577,7 @@ codeunit 90013 "SHA Portal Service"
                         exit(
                             BuildErrorResponse(
                                 'consent token is required.'));
-                    if not GetRequiredText(
-          JObject,
-          'patientCrId',
-          patientCrId)
+                    if not GetRequiredText(JObject, 'patientCrId', patientCrId)
       then
                         exit(
                             BuildErrorResponse(
@@ -1601,7 +1605,7 @@ codeunit 90013 "SHA Portal Service"
 
                 end;
 
-            'addDocumentLocally':
+            'adddocumentlocally':
                 begin
                     if not GetRequiredText(JObject, 'claimHeaderNo', claimHeaderNo) then
                         exit(BuildErrorResponse('Claim Header No is required.'));
@@ -1623,15 +1627,7 @@ codeunit 90013 "SHA Portal Service"
                         exit(BuildErrorResponse('Table ID is required.'));
                     shaDocumentType := GetOptionalInteger(JObject, 'shaDocumentType');
 
-
-
-
-
-
                     ResponseMsg := '';
-
-
-
                     if not ShaApiManagement.SaveAttachmentLocally(
                         interventionCode,
                         shaDocumentType,
@@ -1655,7 +1651,7 @@ codeunit 90013 "SHA Portal Service"
             // REMOVE CLAIM ATTACHMENT
             // ========================================================
 
-            'removeDocumentLocally':
+            'removedocumentlocally':
                 begin
                     if not GetRequiredText(JObject, 'appointmentNo', AppointmentNoText) then
                         exit(BuildErrorResponse('appointmentNo is required.'));
@@ -1694,6 +1690,8 @@ codeunit 90013 "SHA Portal Service"
                         Appointment."SHA Claim No.",
                         tableId,
                         docID,
+                        shaAttachmentId,
+
                         ResponseMsg)
                     then
                         exit(BuildErrorResponse(ResponseMsg));
@@ -2561,8 +2559,7 @@ codeunit 90013 "SHA Portal Service"
         // ============================================================
 
         AppointmentHeader."SHA Patient CR ID" :=
-            CopyStr(
-                PatientCrId,
+            CopyStr(PatientCrId,
                 1,
                 MaxStrLen(AppointmentHeader."SHA Patient CR ID"));
 
@@ -2901,6 +2898,8 @@ codeunit 90013 "SHA Portal Service"
             end;
         end;
     end;
+
+
     // ================================================================
     // CLAIM RESPONSE
     // ================================================================

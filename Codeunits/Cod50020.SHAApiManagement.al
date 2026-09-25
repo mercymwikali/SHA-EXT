@@ -3484,6 +3484,78 @@ codeunit 90001 "SHA Api Management"
         exit(true);
     end;
 
+
+procedure CloseVirtualClaim(
+    consentToken: Text;
+    cancelReason: Text;
+    cancelType: Text;
+    var ResponseCode: Integer;
+    var ResponseMsg: Text;
+    var ResponseText: Text): Boolean
+var
+    ShaHttpClient: Codeunit "SHA Http Client";
+    PayloadObj: JsonObject;
+    ResponseObj: JsonObject;
+    PayloadText: Text;
+    HttpStatusCode: Integer;
+begin
+    ResponseCode := 0;
+    ResponseMsg := '';
+    ResponseText := '';
+
+    if ((consentToken) = '') or
+       ((cancelReason) = '') or
+       ((cancelType) = '') then begin
+        ResponseMsg := StrSubstNo(
+            'Missing claim closure input. consentToken length: %1; cancelReason: [%2]; cancelType: [%3].',
+            StrLen(consentToken), cancelReason, cancelType);
+        exit(false);
+    end;
+
+    PayloadObj.Add('consent_token', consentToken);
+    PayloadObj.Add('cancel_reason_text', cancelReason);
+    PayloadObj.Add('cancel_reason_type', cancelType);
+    PayloadObj.WriteTo(PayloadText);
+
+    if not ShaHttpClient.SendJson(
+        'POST', '/api/v1/claims/close',
+        PayloadText, ResponseText, HttpStatusCode)
+    then begin
+        ResponseCode := HttpStatusCode;
+        ResponseMsg := StrSubstNo(
+            'SHA close request failed (%1). Received cancelReason: [%2]; cancelType: [%3]. SHA response: %4',
+            HttpStatusCode, cancelReason, cancelType, ResponseText);
+        exit(false);
+    end;
+
+    ResponseCode := HttpStatusCode;
+
+    if (HttpStatusCode <> 200) and (HttpStatusCode <> 201) then begin
+        ResponseMsg := ResponseText;
+        if ResponseObj.ReadFrom(ResponseText) then begin
+            ResponseMsg := GetJsonValueText(ResponseObj, 'message');
+            if ResponseMsg = '' then
+                ResponseMsg := GetJsonValueText(ResponseObj, 'detail');
+            if ResponseMsg = '' then
+                ResponseMsg := GetJsonValueText(ResponseObj, 'error');
+            if ResponseMsg = '' then
+                ResponseMsg := ResponseText;
+        end;
+
+        ResponseMsg := StrSubstNo(
+            '%1 Received cancelReason: [%2]; cancelType: [%3].',
+            ResponseMsg, cancelReason, cancelType);
+        exit(false);
+    end;
+
+    if ResponseObj.ReadFrom(ResponseText) then
+        ResponseMsg := GetJsonValueText(ResponseObj, 'message');
+
+    if ResponseMsg = '' then
+        ResponseMsg := 'Claim has been closed successfully.';
+
+    exit(true);
+end;
     procedure AddClaimAttachment(
         ConsentToken: Text;
         InterventionCode: Text;
@@ -3974,7 +4046,7 @@ codeunit 90001 "SHA Api Management"
     begin
         // ensure that the appointmentHeader actually exists
         tbl_appointmentHeader.Reset();
-        tbl_appointmentHeader.SetRange("SHA Consent Request ID", consentCode);
+        tbl_appointmentHeader.SetRange("SHA Authorization Code", consentCode);
         if not tbl_appointmentHeader.FindFirst() then begin
             ResponseMsg :=
                 'Sorry, we could not find an appointment visit with the consent code provided. Kindly try again. Contact the administrator if this error persists';
@@ -4019,17 +4091,46 @@ codeunit 90001 "SHA Api Management"
 
             until tbl_shaClaimLine.Next() = 0;
         end;
-
-
         // fetch doctor information from the appointment header --> For now we'll have only a single doctor per visit/claim
-        tbl_doctorSetup.Reset();
-        tbl_doctorSetup.SetRange("Proffesional Registration No.", tbl_appointmentHeader.Doctor);
-        if not tbl_doctorSetup.FindFirst() then begin
+        // tbl_doctorSetup.Reset();
+        // tbl_doctorSetup.SetRange("Doctor ID", tbl_appointmentHeader.Doctor);
+        // if not tbl_doctorSetup.FindFirst() then begin
+        //     ResponseMsg :=
+        //       'Sorry, we could not find the doctor information from the doctor setup. Kindly ensure that the doctor information exists' + tbl_appointmentHeader.Doctor;
+        //     exit(false);
+        // end;
+
+
+        // Fetch doctor information from the appointment header
+        // For now we'll have only a single doctor per visit/claim
+
+        if tbl_appointmentHeader.Doctor = '' then begin
             ResponseMsg :=
-              'Sorry, we could not find the doctor information from the doctor setup. Kindly ensure that the doctor information exists';
+                StrSubstNo(
+                    'DEBUG: Doctor is blank on Appointment Header. ' +
+                    'Appointment No: [%1], Doctor value: [%2].',
+                    tbl_appointmentHeader."Appointment No.",
+                    tbl_appointmentHeader.Doctor);
+
             exit(false);
         end;
 
+        tbl_doctorSetup.Reset();
+        tbl_doctorSetup.SetRange("Doctor ID", tbl_appointmentHeader.Doctor);
+
+        if not tbl_doctorSetup.FindFirst() then begin
+            ResponseMsg :=
+                StrSubstNo(
+                    'DEBUG: Doctor Setup record not found. ' +
+                    'Appointment No: [%1], ' +
+                    'Appointment Header Doctor: [%2], ' +
+                    'Doctor ID being searched: [%3].',
+                    tbl_appointmentHeader."Appointment No.",
+                    tbl_appointmentHeader.Doctor,
+                    tbl_appointmentHeader.Doctor);
+
+            exit(false);
+        end;
         Clear(singleObject);
         singleObject.Add('identification_number', tbl_doctorSetup."Proffesional Registration No.");
         singleObject.Add('intervention_code', interventionCode);
@@ -4166,135 +4267,186 @@ codeunit 90001 "SHA Api Management"
 
     end;
 
-
     procedure SaveAttachmentLocally(
-       interventionCode: Text;
-       shaDocumentType: Integer;
-       fileName: Text;
-       attachment: Text; //base64 
-       fileContentType: Text;
-       claimHeaderNo: Code[50];
-       tableId: Integer;
-       var responseMsg: Text): Boolean
+        interventionCode: Text;
+        shaDocumentType: Integer;
+        fileName: Text;
+        attachment: Text;
+        fileContentType: Text;
+        claimHeaderNo: Code[50];
+        tableId: Integer;
+        var responseMsg: Text): Boolean
     var
+        ShaApiManagement: Codeunit "SHA Api Management";
         ShaHttpClient: Codeunit "SHA Http Client";
-        tempBlob_CU: Codeunit "Temp Blob";
-        out_stream: OutStream;
-        in_stream: InStream;
-        base64Convert_CU: Codeunit "Base64 Convert";
-        tbl_shaClaimHeader: Record "SHA Claim Header";
+        TempBlob: Codeunit "Temp Blob";
+        Base64Convert: Codeunit "Base64 Convert";
+        ClaimHeader: Record "SHA Claim Header";
+        DocumentAttachment: Record "Document Attachment";
         FromRecRef: RecordRef;
-        tbl_docAttachment: Record "Document Attachment";
-        tableFound: Boolean;
-
+        DecodeStream: OutStream;
+        LocalFileStream: InStream;
+        ShaFileStream: InStream;
+        DocumentTypes: Enum "SHA Attachment Document Type";
+        DocumentTypeIndex: Integer;
+        DocumentTypeName: Text;
+        ShaAttachmentId: Text;
+        ShaResponseCode: Integer;
+        ShaResponseMsg: Text;
     begin
+        Clear(responseMsg);
 
-        ResponseMsg := '';
+        if tableId <> Database::"SHA Claim Header" then begin
+            responseMsg := 'The attachment must be linked to a SHA claim header.';
+            exit(false);
+        end;
 
+        if not ClaimHeader.Get(claimHeaderNo) then begin
+            responseMsg := 'The SHA claim header could not be found.';
+            exit(false);
+        end;
 
-
+        if ClaimHeader."Authorization Code" = '' then begin
+            responseMsg := 'The SHA consent token is missing from the claim header.';
+            exit(false);
+        end;
 
         if interventionCode = '' then begin
-            ResponseMsg := 'SHA intervention code is required.';
+            responseMsg := 'SHA intervention code is required.';
             exit(false);
         end;
 
-
-
-        if FileName = '' then begin
-            ResponseMsg := 'Attachment file name is required.';
+        if fileName = '' then begin
+            responseMsg := 'Attachment file name is required.';
             exit(false);
         end;
 
-
-
-        if FileContentType = '' then
-            FileContentType := ShaHttpClient.GetContentType(FileName);
-        tableFound := false;
-
-        if tableID = Database::"SHA Claim Header" then begin
-            tbl_shaClaimHeader.Reset();
-            tbl_shaClaimHeader.SetRange("Claim No.", claimHeaderNo);
-            if tbl_shaClaimHeader.FindFirst() then begin
-                FromRecRef.GetTable(tbl_shaClaimHeader);
-                tableFound := true;
-            end else begin
-                ResponseMsg := 'Could not find the claim header No to tie the document to.';
-                exit(false);
-            end;
-        end;
-
-        if not tableFound then begin
-            ResponseMsg := 'Could not find the table to tie the document to. No table filter found ';
+        if attachment = '' then begin
+            responseMsg := 'Attachment content is required.';
             exit(false);
         end;
 
-        if FileName <> '' then begin
-            Clear(tbl_docAttachment);
-            tempBlob_CU.CreateOutStream(out_stream, TEXTENCODING::UTF8);
-            base64Convert_CU.FromBase64(attachment, out_stream);
-            tempBlob_CU.CreateInStream(in_stream, TEXTENCODING::UTF8);
-
-            tbl_docAttachment.Init();
-            tbl_docAttachment.Validate("File Extension", FileContentType);
-            tbl_docAttachment.Validate("File Name", FileName);
-            tbl_docAttachment.Validate("Table ID", FromRecRef.Number);
-            tbl_docAttachment.Validate("No.", claimHeaderNo);
-            tbl_docAttachment."Consent Code" := tbl_shaClaimHeader."Consent Request ID";
-            tbl_docAttachment."Intervention Code" := InterventionCode;
-            tbl_docAttachment."SHA Document Type" := shaDocumentType;
-
-            tbl_docAttachment."Document Reference ID".ImportStream(in_stream, '', FileName);
-            if tbl_docAttachment.Insert(true) then begin
-                ResponseMsg := 'Document uploaded successfully.';
-                exit(true);
-            end;
-        end else begin
-            ResponseMsg := 'No file to upload.';
+        DocumentTypeIndex := DocumentTypes.Ordinals.IndexOf(shaDocumentType);
+        if DocumentTypeIndex = 0 then begin
+            responseMsg := 'Invalid SHA document type.';
             exit(false);
         end;
 
+        DocumentTypeName := DocumentTypes.Names.Get(DocumentTypeIndex);
+
+        if fileContentType = '' then
+            fileContentType := ShaHttpClient.GetContentType(fileName);
+
+        TempBlob.CreateOutStream(DecodeStream);
+        Base64Convert.FromBase64(attachment, DecodeStream);
+
+        FromRecRef.GetTable(ClaimHeader);
+        TempBlob.CreateInStream(LocalFileStream);
+
+        DocumentAttachment.Init();
+        DocumentAttachment.Validate("File Name", fileName);
+        DocumentAttachment.Validate("File Extension", fileContentType);
+        DocumentAttachment.Validate("Table ID", FromRecRef.Number);
+        DocumentAttachment.Validate("No.", claimHeaderNo);
+        DocumentAttachment."Consent Code" := ClaimHeader."Authorization Code";
+        DocumentAttachment."Patient CR ID" := ClaimHeader."Patient CR ID";
+        DocumentAttachment."Intervention Code" := interventionCode;
+        DocumentAttachment."SHA Document Type" := shaDocumentType;
+        DocumentAttachment."Document Reference ID".ImportStream(
+            LocalFileStream, '', fileName);
+
+        if not DocumentAttachment.Insert(true) then begin
+            responseMsg := 'The attachment could not be saved locally.';
+            exit(false);
+        end;
+
+        // Create a new stream: ImportStream has consumed LocalFileStream.
+        TempBlob.CreateInStream(ShaFileStream);
+
+        if not ShaApiManagement.AddClaimAttachment(
+            ClaimHeader."Authorization Code",
+            interventionCode,
+            DocumentTypeName,
+            fileName,
+            fileContentType,
+            ShaFileStream,
+            ShaAttachmentId,
+            ShaResponseCode,
+            ShaResponseMsg)
+        then begin
+            responseMsg := StrSubstNo(
+                'The document was saved locally but SHA upload failed (%1): %2',
+                ShaResponseCode,
+                ShaResponseMsg);
+            exit(false);
+        end;
+
+        responseMsg := StrSubstNo(
+            'Document saved locally and submitted to SHA. SHA attachment ID: %1',
+            ShaAttachmentId);
+        exit(true);
     end;
 
+   procedure DeleteAttachmentLocally(
+    docNo: Code[30];
+    tableID: Integer;
+    docID: Integer;
+    shaAttachmentId: Text;
+    var ResponseMsg: Text): Boolean
+var
+    DocumentAttachment: Record "Document Attachment";
+    ClaimHeader: Record "SHA Claim Header";
+    ShaApiManagement: Codeunit "SHA Api Management";
+    ShaResponseCode: Integer;
+    ShaResponseMsg: Text;
+begin
+    ResponseMsg := '';
 
-    procedure DeleteAttachmentLocally(
-        DocNo: Code[30];
-        TableID: Integer; DocID: Integer;
-     var ResponseMsg: Text): Boolean
-    var
-
-        tbl_docAttachment: Record "Document Attachment";
-
-
-    begin
-
-        ResponseMsg := '';
-
-
-
-        tbl_docAttachment.Reset();
-        tbl_docAttachment.SetRange("Table ID", TableID);
-        tbl_docAttachment.SetRange("No.", DocNo);
-        tbl_docAttachment.SetRange(ID, DocID);
-        if not tbl_docAttachment.FindFirst() then begin
-            ResponseMsg := 'Could not find the document to be deleted.';
-            exit(false);
-        end;
-        if tbl_docAttachment."Document Reference ID".HasValue then begin
-            clear(tbl_docAttachment."Document Reference ID");
-            if tbl_docAttachment.Modify(true) then begin
-                ResponseMsg := 'File deleted successfully.';
-                exit(false);
-            end else begin
-                ResponseMsg := 'An error occurred when deleting your file. Kindly try again. Contact the administrator if this error persists.';
-                exit(false);
-            end;
-        end else begin
-            ResponseMsg := 'Could not find the document reference ID to be deleted.';
-            exit(false);
-        end;
-
+    if TableID <> Database::"SHA Claim Header" then begin
+        ResponseMsg := 'The document must belong to a SHA claim header.';
+        exit(false);
     end;
+
+    if not ClaimHeader.Get(DocNo) then begin
+        ResponseMsg := 'The SHA claim header could not be found.';
+        exit(false);
+    end;
+
+    DocumentAttachment.SetRange("Table ID", TableID);
+    DocumentAttachment.SetRange("No.", DocNo);
+    DocumentAttachment.SetRange(ID, DocID);
+    if not DocumentAttachment.FindFirst() then begin
+        ResponseMsg := 'The document could not be found.';
+        exit(false);
+    end;
+
+    if ShaAttachmentId = '' then begin
+        ResponseMsg := 'The SHA attachment ID is missing.';
+        exit(false);
+    end;
+
+    if not ShaApiManagement.RemoveClaimAttachment(
+        ClaimHeader."Authorization Code",
+        ShaAttachmentId,
+        DocumentAttachment."Intervention Code",
+        ShaResponseCode,
+        ShaResponseMsg)
+    then begin
+        ResponseMsg := StrSubstNo(
+            'SHA could not remove the attachment (%1): %2. The local document was retained.',
+            ShaResponseCode,
+            ShaResponseMsg);
+        exit(false);
+    end;
+
+    if not DocumentAttachment.Delete(true) then begin
+        ResponseMsg := 'SHA removed the attachment, but the local document could not be deleted. Reconcile this document before retrying.';
+        exit(false);
+    end;
+
+    ResponseMsg := 'Attachment removed from SHA and deleted locally.';
+    exit(true);
+end;
 
 
 
