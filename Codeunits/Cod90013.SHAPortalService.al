@@ -107,7 +107,7 @@ codeunit 90013 "SHA Portal Service"
         InvoiceNumber: Text;
         SchemeCode: Text;
         SchemeName: Text;
-    shaAttachmentId: Text;
+        shaAttachmentId: Text;
 
         DataObj: JsonObject;
 
@@ -510,11 +510,11 @@ codeunit 90013 "SHA Portal Service"
                 end;
             'sendotp':
                 begin
-                    if not GetRequiredText(JObject,'patientCrId', PatientCrId)
+                    if not GetRequiredText(JObject, 'patientCrId', PatientCrId)
                     then
                         exit(BuildErrorResponse('patientCrId is required.'));
 
-                    ContactId :=GetOptionalInteger(JObject, 'contactId');
+                    ContactId := GetOptionalInteger(JObject, 'contactId');
 
                     if not GetInterventionCodes(
                         JObject,
@@ -607,7 +607,7 @@ codeunit 90013 "SHA Portal Service"
 
                     exit(BuildSuccessResponse(ResponseMsg, DataObj));
                 end;
-           
+
 
             // ========================================================
             // START SHA VISIT + CREATE HMS APPOINTMENT
@@ -663,7 +663,7 @@ codeunit 90013 "SHA Portal Service"
                         HMSPatient)
                     then
                         exit(
-                            BuildErrorResponse(StrSubstNo('Unable to identify the HMS patient. Identification Type: %1, Identification Number: %2, Relationship: %3, SHA CR ID: %4.',IdentificationType, IdentificationNumber, Relationship,                                  PatientCrId)));
+                            BuildErrorResponse(StrSubstNo('Unable to identify the HMS patient. Identification Type: %1, Identification Number: %2, Relationship: %3, SHA CR ID: %4.', IdentificationType, IdentificationNumber, Relationship, PatientCrId)));
 
                     // ====================================================
                     // CREATE SHA VISIT / VERIFY OTP
@@ -806,9 +806,11 @@ codeunit 90013 "SHA Portal Service"
                     DataObj.Add('serviceDate', Format(AppointmentIntervention."Service Date", 0, 9));
                     DataObj.Add('shaResponseCode', ResponseCode);
 
+                    DataObj.Add('shaRawResponse', ResponseMsg);
+
                     exit(
                         BuildSuccessResponse(
-                            ResponseMsg,
+                            'SHA visit verified and HMS appointment created successfully.',
                             DataObj));
                 end;
             // ========================================================
@@ -2699,9 +2701,10 @@ codeunit 90013 "SHA Portal Service"
         // ============================================================
 
         SavePortalInterventions(
-            AppointmentHeader."Appointment No.",
-            PatientCrId,
-            InterventionCodes);
+     AppointmentHeader."Appointment No.",
+     PatientCrId,
+     AuthorizationCode,
+     InterventionCodes);
 
         Commit();
 
@@ -2711,6 +2714,7 @@ codeunit 90013 "SHA Portal Service"
     local procedure SavePortalInterventions(
         AppointmentNo: Code[20];
         PatientCrId: Text;
+        AuthorizationCode: Text;
         InterventionCodes: List of [Text])
     var
         AppointmentIntervention: Record "SHA Appointment Intervention";
@@ -2718,188 +2722,149 @@ codeunit 90013 "SHA Portal Service"
         ClaimHeader: Record "SHA Claim Header";
         InterventionCode: Text;
         UnitPrice: Decimal;
+        IsNew: Boolean;
     begin
-        if AppointmentNo = '' then
-            exit;
-
-        if PatientCrId = '' then
+        if (AppointmentNo = '') or
+           (PatientCrId = '') or
+           (AuthorizationCode = '')
+        then
             exit;
 
         foreach InterventionCode in InterventionCodes do begin
             if InterventionCode <> '' then begin
+
+                // Find existing intervention
                 AppointmentIntervention.Reset();
                 AppointmentIntervention.SetRange("Appointment No.", AppointmentNo);
-                AppointmentIntervention.SetRange("Intervention Code", InterventionCode);
+                AppointmentIntervention.SetRange(
+                    "Intervention Code",
+                    InterventionCode);
 
-                if not AppointmentIntervention.FindFirst() then begin
-                    Clear(InterventionCache);
+                IsNew := not AppointmentIntervention.FindFirst();
 
-                    InterventionCache.Reset();
-                    InterventionCache.SetRange("Patient CR ID", PatientCrId);
-                    InterventionCache.SetRange(Code, InterventionCode);
-
+                if IsNew then begin
                     AppointmentIntervention.Init();
 
-                    AppointmentIntervention."Appointment No." := AppointmentNo;
+                    AppointmentIntervention."Appointment No." :=
+                        AppointmentNo;
 
                     AppointmentIntervention."Intervention Code" :=
                         CopyStr(
                             InterventionCode,
                             1,
-                            MaxStrLen(AppointmentIntervention."Intervention Code"));
+                            MaxStrLen(
+                                AppointmentIntervention."Intervention Code"));
 
                     AppointmentIntervention."Patient CR ID" :=
                         CopyStr(
                             PatientCrId,
                             1,
-                            MaxStrLen(AppointmentIntervention."Patient CR ID"));
-
-                    // ====================================================
-                    // INTERVENTION DETAILS
-                    // ====================================================
-
-                    if InterventionCache.FindFirst() then begin
-                        AppointmentIntervention."Intervention Name" :=
-                            CopyStr(
-                                InterventionCache.Name,
-                                1,
-                                MaxStrLen(AppointmentIntervention."Intervention Name"));
-
-                        AppointmentIntervention."Parent Benefit Code" :=
-                            CopyStr(
-                                InterventionCache."Parent Benefit Code",
-                                1,
-                                MaxStrLen(AppointmentIntervention."Parent Benefit Code"));
-
-                        AppointmentIntervention."Sub Benefit Code" :=
-                            CopyStr(
-                                InterventionCache."Sub Benefit Code",
-                                1,
-                                MaxStrLen(AppointmentIntervention."Sub Benefit Code"));
-
-                        AppointmentIntervention."Needs Preauth" :=
-                            InterventionCache."Needs Preauth";
-
-                        UnitPrice := InterventionCache."Overall Tariff";
-
-                        if UnitPrice = 0 then
-                            UnitPrice := InterventionCache."Fallback Overall Tariff";
-
-                        AppointmentIntervention."Unit Price" := UnitPrice;
-                        AppointmentIntervention.Tariff := UnitPrice;
-                    end else begin
-                        UnitPrice := 0;
-                    end;
-
-                    // ====================================================
-                    // CLAIM DETAILS
-                    // ====================================================
+                            MaxStrLen(
+                                AppointmentIntervention."Patient CR ID"));
 
                     AppointmentIntervention.Quantity := 1;
+                    AppointmentIntervention."Created At" :=
+                        CurrentDateTime();
+                end;
 
-                    AppointmentIntervention."Claim Amount" :=
-                        AppointmentIntervention.Quantity *
-                        AppointmentIntervention."Unit Price";
+                // ========================================================
+                // SHA VISIT AUTHORIZATION
+                // ========================================================
+                AppointmentIntervention."Authorization Code" :=
+                    CopyStr(
+                        AuthorizationCode,
+                        1,
+                        MaxStrLen(
+                            AppointmentIntervention."Authorization Code"));
 
+                AppointmentIntervention."Line Status" := 'ACTIVE';
+                AppointmentIntervention."Include in Claim" := true;
+
+                if AppointmentIntervention."Service Date" = 0D then
                     AppointmentIntervention."Service Date" := Today;
 
-                    AppointmentIntervention."Include in Claim" := true;
+                // ========================================================
+                // INTERVENTION DETAILS
+                // ========================================================
+                InterventionCache.Reset();
+                InterventionCache.SetRange(
+                    "Patient CR ID",
+                    PatientCrId);
+                InterventionCache.SetRange(
+                    Code,
+                    InterventionCode);
 
-                    AppointmentIntervention."Line Status" := 'ACTIVE';
+                if InterventionCache.FindFirst() then begin
+                    AppointmentIntervention."Intervention Name" :=
+                        CopyStr(
+                            InterventionCache.Name,
+                            1,
+                            MaxStrLen(
+                                AppointmentIntervention."Intervention Name"));
 
-                    AppointmentIntervention."Authorization Code" := '';
+                    AppointmentIntervention."Parent Benefit Code" :=
+                        CopyStr(
+                            InterventionCache."Parent Benefit Code",
+                            1,
+                            MaxStrLen(
+                                AppointmentIntervention."Parent Benefit Code"));
 
-                    AppointmentIntervention."Created At" := CurrentDateTime();
-                    AppointmentIntervention."Last Updated At" := CurrentDateTime();
+                    AppointmentIntervention."Sub Benefit Code" :=
+                        CopyStr(
+                            InterventionCache."Sub Benefit Code",
+                            1,
+                            MaxStrLen(
+                                AppointmentIntervention."Sub Benefit Code"));
 
-                    // ====================================================
-                    // LINK CLAIM IF IT ALREADY EXISTS
-                    // ====================================================
+                    AppointmentIntervention."Needs Preauth" :=
+                        InterventionCache."Needs Preauth";
 
-                    ClaimHeader.Reset();
-                    ClaimHeader.SetRange("Appointment No.", AppointmentNo);
+                    UnitPrice :=
+                        InterventionCache."Overall Tariff";
 
-                    if ClaimHeader.FindFirst() then
-                        AppointmentIntervention."Claim No." :=
-                            ClaimHeader."Claim No.";
+                    if UnitPrice = 0 then
+                        UnitPrice :=
+                            InterventionCache."Fallback Overall Tariff";
 
-                    AppointmentIntervention.Insert();
-                end else begin
-                    // ====================================================
-                    // UPDATE EXISTING LINE DETAILS IF THEY WERE CREATED
-                    // EARLIER WITH MISSING INFORMATION
-                    // ====================================================
+                    AppointmentIntervention."Unit Price" :=
+                        UnitPrice;
 
-                    Clear(InterventionCache);
-
-                    InterventionCache.Reset();
-                    InterventionCache.SetRange("Patient CR ID", PatientCrId);
-                    InterventionCache.SetRange(Code, InterventionCode);
-
-                    if InterventionCache.FindFirst() then begin
-                        AppointmentIntervention."Intervention Name" :=
-                            CopyStr(
-                                InterventionCache.Name,
-                                1,
-                                MaxStrLen(AppointmentIntervention."Intervention Name"));
-
-                        AppointmentIntervention."Parent Benefit Code" :=
-                            CopyStr(
-                                InterventionCache."Parent Benefit Code",
-                                1,
-                                MaxStrLen(AppointmentIntervention."Parent Benefit Code"));
-
-                        AppointmentIntervention."Sub Benefit Code" :=
-                            CopyStr(
-                                InterventionCache."Sub Benefit Code",
-                                1,
-                                MaxStrLen(AppointmentIntervention."Sub Benefit Code"));
-
-                        AppointmentIntervention."Needs Preauth" :=
-                            InterventionCache."Needs Preauth";
-
-                        UnitPrice := InterventionCache."Overall Tariff";
-
-                        if UnitPrice = 0 then
-                            UnitPrice := InterventionCache."Fallback Overall Tariff";
-
-                        AppointmentIntervention."Unit Price" := UnitPrice;
-                        AppointmentIntervention.Tariff := UnitPrice;
-                    end;
-
-                    if AppointmentIntervention.Quantity = 0 then
-                        AppointmentIntervention.Quantity := 1;
-
-                    AppointmentIntervention."Claim Amount" :=
-                        AppointmentIntervention.Quantity *
-                        AppointmentIntervention."Unit Price";
-
-                    AppointmentIntervention."Include in Claim" := true;
-
-                    if AppointmentIntervention."Line Status" = '' then
-                        AppointmentIntervention."Line Status" := 'ACTIVE';
-
-                    if AppointmentIntervention."Service Date" = 0D then
-                        AppointmentIntervention."Service Date" := Today;
-
-                    ClaimHeader.Reset();
-                    ClaimHeader.SetRange("Appointment No.", AppointmentNo);
-
-                    if ClaimHeader.FindFirst() then
-                        if AppointmentIntervention."Claim No." = '' then
-                            AppointmentIntervention."Claim No." :=
-                                ClaimHeader."Claim No.";
-
-                    AppointmentIntervention."Last Updated At" :=
-                        CurrentDateTime();
-
-                    AppointmentIntervention.Modify();
+                    AppointmentIntervention.Tariff :=
+                        UnitPrice;
                 end;
+
+                // ========================================================
+                // CLAIM DETAILS
+                // ========================================================
+                if AppointmentIntervention.Quantity = 0 then
+                    AppointmentIntervention.Quantity := 1;
+
+                AppointmentIntervention."Claim Amount" :=
+                    AppointmentIntervention.Quantity *
+                    AppointmentIntervention."Unit Price";
+
+                ClaimHeader.Reset();
+                ClaimHeader.SetRange(
+                    "Appointment No.",
+                    AppointmentNo);
+
+                if ClaimHeader.FindFirst() then
+                    AppointmentIntervention."Claim No." :=
+                        ClaimHeader."Claim No.";
+
+                AppointmentIntervention."Last Updated At" :=
+                    CurrentDateTime();
+
+                // ========================================================
+                // SAVE
+                // ========================================================
+                if IsNew then
+                    AppointmentIntervention.Insert(true)
+                else
+                    AppointmentIntervention.Modify(true);
             end;
         end;
     end;
-
-
     // ================================================================
     // CLAIM RESPONSE
     // ================================================================

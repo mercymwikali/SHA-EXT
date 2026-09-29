@@ -86,47 +86,91 @@ table 90014 "SHA Claim Diagnosis"
         {
             Caption = 'Site Code Type';
         }
-       field(21; Status; Option)
-{
-    Caption = 'Status';
-    OptionMembers = Pending,Submitted,Removed,Failed;
-    OptionCaption = 'Pending,Submitted,Removed,Failed';
-}
+        field(21; Status; Option)
+        {
+            Caption = 'Status';
+            OptionMembers = Pending,Submitted,Removed,Failed;
+            OptionCaption = 'Pending,Submitted,Removed,Failed';
+        }
 
-field(22; "SHA Response Code"; Integer)
-{
-    Caption = 'SHA Response Code';
-}
+        field(22; "SHA Response Code"; Integer)
+        {
+            Caption = 'SHA Response Code';
+        }
 
-field(23; "SHA Response Message"; Text[250])
-{
-    Caption = 'SHA Response Message';
-}
+        field(23; "SHA Response Message"; Text[250])
+        {
+            Caption = 'SHA Response Message';
+        }
 
-field(24; "Created By"; Code[50])
-{
-    Caption = 'Created By';
-}
+        field(24; "Created By"; Code[50])
+        {
+            Caption = 'Created By';
+        }
 
-field(25; "Created At"; DateTime)
-{
-    Caption = 'Created At';
-}
+        field(25; "Created At"; DateTime)
+        {
+            Caption = 'Created At';
+        }
 
-field(26; "Removed At"; DateTime)
-{
-    Caption = 'Removed At';
-}
+        field(26; "Removed At"; DateTime)
+        {
+            Caption = 'Removed At';
+        }
 
-field(27; "Removed By"; Code[50])
-{
-    Caption = 'Removed By';
-}
+        field(27; "Removed By"; Code[50])
+        {
+            Caption = 'Removed By';
+        }
 
-field(28; "Last Updated At"; DateTime)
-{
-    Caption = 'Last Updated At';
-}
+        field(28; "Last Updated At"; DateTime)
+        {
+            Caption = 'Last Updated At';
+        }
+        //get practitioner number
+        field(29; "Doc_ID_Type"; Option)
+        {
+            Caption = 'Practitioner Identification Type';
+            OptionMembers = ,"Registration number","National ID","Alien ID","Refugee ID";
+            Editable = false;
+        }
+
+        field(30; "practitioner_regulation_body"; Option)
+        {
+            Caption = 'Practitioner Regulation Body';
+            OptionMembers = ,KMPDC,COC,NCK,PPB;
+            Editable = false;
+        }
+
+        field(31; "Doctor ID"; Code[20])
+        {
+            Caption = 'Doctor ID';
+            NotBlank = true;
+            TableRelation = "HMS Setup Doctor"."Doctor ID";
+
+            trigger OnValidate()
+            begin
+                SetPractitionerDetails();
+            end;
+        }
+
+        field(32; "Professional Registration No."; Code[50])
+        {
+            Caption = 'Professional Registration No.';
+            Editable = false;
+        }
+
+        field(50001; "Doctors Name"; Text[100])
+        {
+            Caption = 'Practitioner Name';
+            Editable = false;
+        }
+
+        field(50004; Specialization; Code[20])
+        {
+            Caption = 'Specialization';
+            Editable = false;
+        }
     }
 
     keys
@@ -141,5 +185,53 @@ field(28; "Last Updated At"; DateTime)
         key(ClaimDiagnosis; "Claim No.", "Diagnosis Code")
         {
         }
+
     }
+
+
+    local procedure SetPractitionerDetails()
+    var
+        Doctor: Record "HMS Setup Doctor";
+    begin
+        ClearPractitionerDetails();
+
+        if "Doctor ID" = '' then
+            exit;
+
+        Doctor.Reset();
+        Doctor.SetRange("Doctor ID", "Doctor ID");
+
+        if not Doctor.FindFirst() then
+            Error(
+                'Doctor ID %1 does not exist in HMS Doctor Setup.',
+                "Doctor ID");
+
+        // Validate mandatory SHA practitioner information
+        if Doctor."Proffesional Registration No." = '' then
+            Error(
+                'Professional Registration No. is missing for doctor %1.',
+                "Doctor ID");
+
+        if Doctor."Doctors Name" = '' then
+            Error(
+                'Doctor name is missing for doctor %1.',
+                "Doctor ID");
+
+        // Copy practitioner snapshot to claim diagnosis
+        "Doctors Name" := Doctor."Doctors Name";
+        "Professional Registration No." := Doctor."Proffesional Registration No.";
+        "Doc_ID_Type" := Doctor.practitioner_identification_type;
+        "practitioner_regulation_body" := Doctor."practitioner_regulation_body";
+        Specialization := Doctor.Specialization;
+    end;
+
+    local procedure ClearPractitionerDetails()
+    begin
+        "Doctors Name" := '';
+        "Professional Registration No." := '';
+        Specialization := '';
+        Clear("Doc_ID_Type");
+        Clear("practitioner_regulation_body");
+    end;
 }
+

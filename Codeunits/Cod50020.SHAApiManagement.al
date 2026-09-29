@@ -2820,303 +2820,174 @@ codeunit 90001 "SHA Api Management"
         exit(true);
     end;
 
-    procedure CreateVisitWithOtp(
-        InterventionCodes: List of [Text];
-        PatientId: Text;
-        ServiceType: Enum "SHA Service Type";
-        Otp: Text;
-        var VisitId: Text;
-        var VisitNumber: Text;
-        var AuthorizationCode: Text;
-        var AuthorizationGuid: Text;
-        var ClaimStatus: Text;
-        var VisitStartText: Text;
-        var InvoiceId: Text;
-        var InvoiceNumber: Text;
-        var SchemeCode: Text;
-        var SchemeName: Text;
-        var ResponseCode: Integer;
-        var ResponseMsg: Text): Boolean
-    var
-        ShaHttpClient: Codeunit "SHA Http Client";
-        ShaAuthorizationClient: Codeunit "SHA Authorization Client";
-
-        PayloadObj: JsonObject;
-        InterventionArray: JsonArray;
-
-        InterventionCode: Text;
-
-        PayloadText: Text;
-        ResponseText: Text;
-
-        HttpStatusCode: Integer;
-
-        ResponseObj: JsonObject;
-    begin
-        // =========================================================
-        // INITIALIZE OUTPUT VARIABLES
-        // =========================================================
-
-        VisitId := '';
-        VisitNumber := '';
-
-        AuthorizationCode := '';
-        AuthorizationGuid := '';
-
-        ClaimStatus := '';
-
-        VisitStartText := '';
-
-        InvoiceId := '';
-        InvoiceNumber := '';
-
-        SchemeCode := '';
-        SchemeName := '';
-
-        ResponseCode := 0;
-        ResponseMsg := '';
-
-        // =========================================================
-        // VALIDATION
-        // =========================================================
-
-        if PatientId = '' then begin
-
-            ResponseMsg :=
-                'Patient ID is required to start an SHA visit.';
-
-            exit(false);
-        end;
-
-        if Otp = '' then begin
-
-            ResponseMsg :=
-                'OTP is required to start an SHA visit.';
-
-            exit(false);
-        end;
-
-        if InterventionCodes.Count() = 0 then begin
-
-            ResponseMsg :=
-                'At least one intervention is required to start an SHA visit.';
-
-            exit(false);
-        end;
-
-        // =========================================================
-        // BUILD INTERVENTION ARRAY
-        // =========================================================
-
-        foreach InterventionCode in InterventionCodes do begin
-
-            if InterventionCode <> '' then
-                InterventionArray.Add(
-                    InterventionCode);
-        end;
-
-        // =========================================================
-        // BUILD PAYLOAD
-        // =========================================================
-
-        PayloadObj.Add(
-            'intervention_codes',
-            InterventionArray);
-
-        PayloadObj.Add(
-            'patient_id',
-            PatientId);
-
-        PayloadObj.Add(
-            'service_type',
-            ShaAuthorizationClient.ServiceTypeToText(
-                ServiceType));
-
-        PayloadObj.Add(
-            'otp',
-            Otp);
-
-        PayloadObj.WriteTo(
-            PayloadText);
-
-        // =========================================================
-        // SEND START VISIT REQUEST
-        // =========================================================
-
-        if not ShaHttpClient.SendJson(
-            'POST',
-            '/api/v1/claims/visit',
-            PayloadText,
-            ResponseText,
-            HttpStatusCode)
-        then begin
-
-            ResponseCode :=
-                HttpStatusCode;
-
-            ResponseMsg :=
-                'Failed to send SHA start visit request.';
-
-            exit(false);
-        end;
-
-        ResponseCode :=
-            HttpStatusCode;
-
-        // =========================================================
-        // HTTP FAILURE
-        // =========================================================
-
-        if (HttpStatusCode <> 200) and
-           (HttpStatusCode <> 201)
-        then begin
-
-            ResponseMsg :=
-                ResponseText;
-
-            if ResponseObj.ReadFrom(
-                ResponseText)
-            then begin
-
-                ResponseMsg :=
-                    GetJsonValueText(
-                        ResponseObj,
-                        'message');
-
-                if ResponseMsg = '' then
-                    ResponseMsg :=
-                        GetJsonValueText(
-                            ResponseObj,
-                            'detail');
-
-                if ResponseMsg = '' then
-                    ResponseMsg :=
-                        ResponseText;
-            end;
-
-            exit(false);
-        end;
-
-        // =========================================================
-        // PARSE RESPONSE
-        // =========================================================
-
-        if not ResponseObj.ReadFrom(
-            ResponseText)
-        then begin
-
-            ResponseMsg :=
-                'SHA returned an invalid visit response.';
-
-            exit(false);
-        end;
-
-        // =========================================================
-        // VISIT ID
-        // =========================================================
-
-        VisitId :=
-            GetJsonValueText(
-                ResponseObj,
-                'id');
-
-        // =========================================================
-        // VISIT NUMBER
-        // =========================================================
-
-        VisitNumber :=
-            GetJsonValueText(
-                ResponseObj,
-                'visit_number');
-
-        // =========================================================
-        // AUTHORIZATION
-        // =========================================================
-
-        AuthorizationCode :=
-            GetJsonValueText(
-                ResponseObj,
-                'authorization_code');
-
-        AuthorizationGuid :=
-            GetJsonValueText(
-                ResponseObj,
-                'authorization_guid');
-
-        // =========================================================
-        // CLAIM STATUS
-        // =========================================================
-
-        ClaimStatus :=
-            GetJsonValueText(
-                ResponseObj,
-                'claim_auth_status');
-
-        // =========================================================
-        // VISIT START
-        // =========================================================
-
-        VisitStartText :=
-            GetJsonValueText(
-                ResponseObj,
-                'visit_start');
-
-        // =========================================================
-        // SCHEME
-        // =========================================================
-
-        SchemeCode :=
-            GetJsonValueText(
-                ResponseObj,
-                'scheme_code');
-
-        SchemeName :=
-            GetJsonValueText(
-                ResponseObj,
-                'scheme_name');
-
-        // =========================================================
-        // INVOICE
-        // =========================================================
-
-        InvoiceId :=
-            GetJsonValueText(
-                ResponseObj,
-                'invoice_id');
-
-        InvoiceNumber :=
-            GetJsonValueText(
-                ResponseObj,
-                'invoice_number');
-
-        // =========================================================
-        // VALIDATE RESPONSE
-        // =========================================================
-
-        if VisitId = '' then begin
-
-            ResponseMsg :=
-                'SHA returned a successful response but no Visit ID was provided.';
-
-            exit(false);
-        end;
-
-        if ClaimStatus = '' then
-            ClaimStatus :=
-                GetJsonValueText(
-                    ResponseObj,
-                    'workflow_state');
-
-        // =========================================================
-        // SUCCESS
-        // =========================================================
-
-        ResponseMsg :=
-            'SHA visit started successfully.';
-
-        exit(true);
+procedure CreateVisitWithOtp(
+    InterventionCodes: List of [Text];
+    PatientId: Text;
+    ServiceType: Enum "SHA Service Type";
+    Otp: Text;
+    var VisitId: Text;
+    var VisitNumber: Text;
+    var AuthorizationCode: Text;
+    var AuthorizationGuid: Text;
+    var ClaimStatus: Text;
+    var VisitStartText: Text;
+    var InvoiceId: Text;
+    var InvoiceNumber: Text;
+    var SchemeCode: Text;
+    var SchemeName: Text;
+    var ResponseCode: Integer;
+    var ResponseMsg: Text): Boolean
+var
+    ShaHttpClient: Codeunit "SHA Http Client";
+    ShaAuthorizationClient: Codeunit "SHA Authorization Client";
+    PayloadObj: JsonObject;
+    ResponseObj: JsonObject;
+    InterventionArray: JsonArray;
+    InterventionCode: Text;
+    PayloadText: Text;
+    ResponseText: Text;
+    ErrorText: Text;
+    HttpStatusCode: Integer;
+begin
+    // Initialize
+    Clear(VisitId);
+    Clear(VisitNumber);
+    Clear(AuthorizationCode);
+    Clear(AuthorizationGuid);
+    Clear(ClaimStatus);
+    Clear(VisitStartText);
+    Clear(InvoiceId);
+    Clear(InvoiceNumber);
+    Clear(SchemeCode);
+    Clear(SchemeName);
+
+    ResponseCode := 0;
+    ResponseMsg := '';
+
+    // Validate
+    if PatientId = '' then begin
+        ResponseMsg := 'Patient ID is required to start an SHA visit.';
+        exit(false);
     end;
 
+    if Otp = '' then begin
+        ResponseMsg := 'OTP is required to start an SHA visit.';
+        exit(false);
+    end;
+
+    if InterventionCodes.Count() = 0 then begin
+        ResponseMsg := 'At least one intervention is required to start an SHA visit.';
+        exit(false);
+    end;
+
+    // Build interventions
+    foreach InterventionCode in InterventionCodes do
+        if InterventionCode <> '' then
+            InterventionArray.Add(InterventionCode);
+
+    if InterventionArray.Count() = 0 then begin
+        ResponseMsg := 'At least one valid intervention is required to start an SHA visit.';
+        exit(false);
+    end;
+
+    // Build request
+    PayloadObj.Add('intervention_codes', InterventionArray);
+    PayloadObj.Add('patient_id', PatientId);
+    PayloadObj.Add(
+        'service_type',
+        ShaAuthorizationClient.ServiceTypeToText(ServiceType));
+    PayloadObj.Add('otp', Otp);
+    PayloadObj.WriteTo(PayloadText);
+
+    // Call SHA
+    if not ShaHttpClient.SendJson(
+        'POST',
+        '/api/v1/claims/visit',
+        PayloadText,
+        ResponseText,
+        HttpStatusCode)
+    then begin
+        ResponseCode := HttpStatusCode;
+
+        if ResponseText <> '' then
+            ResponseMsg := ResponseText
+        else
+            ResponseMsg := 'Failed to send SHA start visit request.';
+
+        exit(false);
+    end;
+
+    ResponseCode := HttpStatusCode;
+
+    // Parse response
+    if not ResponseObj.ReadFrom(ResponseText) then begin
+        ResponseMsg := ResponseText;
+
+        if ResponseMsg = '' then
+            ResponseMsg := 'SHA returned an invalid visit response.';
+
+        exit(false);
+    end;
+
+    // SHA HTTP error
+    if (HttpStatusCode <> 200) and (HttpStatusCode <> 201) then begin
+        ErrorText := GetJsonValueText(ResponseObj, 'message');
+
+        if ErrorText = '' then
+            ErrorText := GetJsonValueText(ResponseObj, 'detail');
+
+        if ErrorText <> '' then
+            ResponseMsg := ErrorText
+        else
+            ResponseMsg := ResponseText;
+
+        exit(false);
+    end;
+
+    // Extract SHA visit details
+    VisitId := GetJsonValueText(ResponseObj, 'id');
+    VisitNumber := GetJsonValueText(ResponseObj, 'visit_number');
+    VisitStartText := GetJsonValueText(ResponseObj, 'visit_start');
+
+    AuthorizationCode :=
+        GetJsonValueText(ResponseObj, 'authorization_code');
+
+    AuthorizationGuid :=
+        GetJsonValueText(ResponseObj, 'authorization_guid');
+
+    ClaimStatus :=
+        GetJsonValueText(ResponseObj, 'claim_auth_status');
+
+    if ClaimStatus = '' then
+        ClaimStatus :=
+            GetJsonValueText(ResponseObj, 'workflow_state');
+
+    SchemeCode :=
+        GetJsonValueText(ResponseObj, 'scheme_code');
+
+    SchemeName :=
+        GetJsonValueText(ResponseObj, 'scheme_name');
+
+    InvoiceId :=
+        GetJsonValueText(ResponseObj, 'invoice_id');
+
+    InvoiceNumber :=
+        GetJsonValueText(ResponseObj, 'invoice_number');
+
+    // Validate successful response
+    if VisitId = '' then begin
+        ResponseMsg :=
+            'SHA returned a successful response but no Visit ID was provided. Raw response: ' +
+            ResponseText;
+
+        exit(false);
+    end;
+
+    // Return complete raw SHA response for debugging
+    ResponseMsg := ResponseText;
+
+    exit(true);
+end;
 
     procedure AddClaimIntervention(
         ConsentToken: Text;

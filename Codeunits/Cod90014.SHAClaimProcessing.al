@@ -73,125 +73,126 @@ codeunit 90014 "SHA Claim Processing"
         exit(ClaimHeader.FindFirst());
     end;
 
-  procedure GetClaim(
-    ClaimNo: Code[20];
-    var ClaimHeader: Record "SHA Claim Header"): Boolean
-var
-    PreviewResponse: Text;
-    ResponseMsg: Text;
-    ResponseCode: Integer;
-begin
-    if (ClaimNo = '') or not ClaimHeader.Get(ClaimNo) then
-        exit(false);
+    procedure GetClaim(
+      ClaimNo: Code[20];
+      var ClaimHeader: Record "SHA Claim Header"): Boolean
+    var
+        PreviewResponse: Text;
+        ResponseMsg: Text;
+        ResponseCode: Integer;
+    begin
+        if (ClaimNo = '') or not ClaimHeader.Get(ClaimNo) then
+            exit(false);
 
-    // The SHA close request has already completed before this is called.
-    // Do not discard the local claim if the subsequent refresh fails.
-    if not PreviewProviderClaim(
-        ClaimHeader."Appointment No.",
-        PreviewResponse,
-        ResponseCode,
-        ResponseMsg)
-    then
-        exit(true);
+        // The SHA close request has already completed before this is called.
+        // Do not discard the local claim if the subsequent refresh fails.
+        if not PreviewProviderClaim(
+            ClaimHeader."Appointment No.",
+            PreviewResponse,
+            ResponseCode,
+            ResponseMsg)
+        then
+            exit(true);
 
-    UpdateClaimHeaderFromPreview(ClaimHeader, PreviewResponse);
-    exit(ClaimHeader.Get(ClaimNo));
-end;
-local procedure UpdateClaimHeaderFromPreview(
-    var ClaimHeader: Record "SHA Claim Header";
-    PreviewResponse: Text)
-var
-    Preview: JsonObject;
-    Token: JsonToken;
-    ValueText: Text;
-begin
-    if not Preview.ReadFrom(PreviewResponse) then
-        exit;
+        UpdateClaimHeaderFromPreview(ClaimHeader, PreviewResponse);
+        exit(ClaimHeader.Get(ClaimNo));
+    end;
 
-    if Preview.Get('workflow_state', Token) then
-        if Token.IsValue() then
-            if not Token.AsValue().IsNull() then begin
-                ValueText := Token.AsValue().AsText();
-                ClaimHeader."Claim Status" :=
-                    CopyStr(ValueText, 1, MaxStrLen(ClaimHeader."Claim Status"));
+    local procedure UpdateClaimHeaderFromPreview(
+        var ClaimHeader: Record "SHA Claim Header";
+        PreviewResponse: Text)
+    var
+        Preview: JsonObject;
+        Token: JsonToken;
+        ValueText: Text;
+    begin
+        if not Preview.ReadFrom(PreviewResponse) then
+            exit;
 
-                case UpperCase(ValueText) of
-                    'CANCELLED', 'CANCELED', 'CLOSED':
-                        ClaimHeader."Processing Status" :=
-                            ClaimHeader."Processing Status"::Cancelled;
+        if Preview.Get('workflow_state', Token) then
+            if Token.IsValue() then
+                if not Token.AsValue().IsNull() then begin
+                    ValueText := Token.AsValue().AsText();
+                    ClaimHeader."Claim Status" :=
+                        CopyStr(ValueText, 1, MaxStrLen(ClaimHeader."Claim Status"));
+
+                    case UpperCase(ValueText) of
+                        'CANCELLED', 'CANCELED', 'CLOSED':
+                            ClaimHeader."Processing Status" :=
+                                ClaimHeader."Processing Status"::Cancelled;
+                    end;
                 end;
-            end;
 
-    if Preview.Get('id', Token) then
-        if Token.IsValue() then
-            if not Token.AsValue().IsNull() then
-                ClaimHeader."SHA Claim ID" :=
-                    CopyStr(Token.AsValue().AsText(), 1,
-                        MaxStrLen(ClaimHeader."SHA Claim ID"));
+        if Preview.Get('id', Token) then
+            if Token.IsValue() then
+                if not Token.AsValue().IsNull() then
+                    ClaimHeader."SHA Claim ID" :=
+                        CopyStr(Token.AsValue().AsText(), 1,
+                            MaxStrLen(ClaimHeader."SHA Claim ID"));
 
-    if Preview.Get('patient_name', Token) then
-        if Token.IsValue() then
-            if not Token.AsValue().IsNull() then
-                ClaimHeader."Patient Name" :=
-                    CopyStr(Token.AsValue().AsText(), 1,
-                        MaxStrLen(ClaimHeader."Patient Name"));
+        if Preview.Get('patient_name', Token) then
+            if Token.IsValue() then
+                if not Token.AsValue().IsNull() then
+                    ClaimHeader."Patient Name" :=
+                        CopyStr(Token.AsValue().AsText(), 1,
+                            MaxStrLen(ClaimHeader."Patient Name"));
 
-    if Preview.Get('patient_number', Token) then
-        if Token.IsValue() then
-            if not Token.AsValue().IsNull() then
-                ClaimHeader."Patient No." :=
-                    CopyStr(Token.AsValue().AsText(), 1,
-                        MaxStrLen(ClaimHeader."Patient No."));
+        if Preview.Get('patient_number', Token) then
+            if Token.IsValue() then
+                if not Token.AsValue().IsNull() then
+                    ClaimHeader."Patient No." :=
+                        CopyStr(Token.AsValue().AsText(), 1,
+                            MaxStrLen(ClaimHeader."Patient No."));
 
-    if Preview.Get('scheme_code', Token) then
-        if Token.IsValue() then
-            if not Token.AsValue().IsNull() then
-                ClaimHeader."Scheme Code" :=
-                    CopyStr(Token.AsValue().AsText(), 1,
-                        MaxStrLen(ClaimHeader."Scheme Code"));
+        if Preview.Get('scheme_code', Token) then
+            if Token.IsValue() then
+                if not Token.AsValue().IsNull() then
+                    ClaimHeader."Scheme Code" :=
+                        CopyStr(Token.AsValue().AsText(), 1,
+                            MaxStrLen(ClaimHeader."Scheme Code"));
 
-    if Preview.Get('scheme_name', Token) then
-        if Token.IsValue() then
-            if not Token.AsValue().IsNull() then
-                ClaimHeader."Scheme Name" :=
-                    CopyStr(Token.AsValue().AsText(), 1,
-                        MaxStrLen(ClaimHeader."Scheme Name"));
+        if Preview.Get('scheme_name', Token) then
+            if Token.IsValue() then
+                if not Token.AsValue().IsNull() then
+                    ClaimHeader."Scheme Name" :=
+                        CopyStr(Token.AsValue().AsText(), 1,
+                            MaxStrLen(ClaimHeader."Scheme Name"));
 
-    if Preview.Get('service_type', Token) then
-        if Token.IsValue() then
-            if not Token.AsValue().IsNull() then
-                ClaimHeader."Service Type" :=
-                    CopyStr(Token.AsValue().AsText(), 1,
-                        MaxStrLen(ClaimHeader."Service Type"));
+        if Preview.Get('service_type', Token) then
+            if Token.IsValue() then
+                if not Token.AsValue().IsNull() then
+                    ClaimHeader."Service Type" :=
+                        CopyStr(Token.AsValue().AsText(), 1,
+                            MaxStrLen(ClaimHeader."Service Type"));
 
-    if Preview.Get('total_claim_amount', Token) then
-        if Token.IsValue() then
-            if not Token.AsValue().IsNull() then
-                ClaimHeader."Claim Amount" := Token.AsValue().AsDecimal();
+        if Preview.Get('total_claim_amount', Token) then
+            if Token.IsValue() then
+                if not Token.AsValue().IsNull() then
+                    ClaimHeader."Claim Amount" := Token.AsValue().AsDecimal();
 
-    if Preview.Get('visit_start', Token) then
-        if Token.IsValue() then
-            if not Token.AsValue().IsNull() then
-                if Evaluate(ClaimHeader."Visit Start", Token.AsValue().AsText()) then;
+        if Preview.Get('visit_start', Token) then
+            if Token.IsValue() then
+                if not Token.AsValue().IsNull() then
+                    if Evaluate(ClaimHeader."Visit Start", Token.AsValue().AsText()) then;
 
-    ClaimHeader."Last Status Update" := CurrentDateTime;
-    ClaimHeader."Last Updated At" := CurrentDateTime;
-    ClaimHeader.Modify(true);
-end;
+        ClaimHeader."Last Status Update" := CurrentDateTime;
+        ClaimHeader."Last Updated At" := CurrentDateTime;
+        ClaimHeader.Modify(true);
+    end;
 
-local procedure UpdateTextField(
-    Source: JsonObject;
-    KeyName: Text;
-    var Destination: Text)
-var
-    ValueToken: JsonToken;
-begin
-    if Source.Get(KeyName, ValueToken) then
-        if ValueToken.IsValue() then
-            if not ValueToken.AsValue().IsNull() then
-                Destination := CopyStr(
-                    ValueToken.AsValue().AsText(), 1, MaxStrLen(Destination));
-end;
+    local procedure UpdateTextField(
+        Source: JsonObject;
+        KeyName: Text;
+        var Destination: Text)
+    var
+        ValueToken: JsonToken;
+    begin
+        if Source.Get(KeyName, ValueToken) then
+            if ValueToken.IsValue() then
+                if not ValueToken.AsValue().IsNull() then
+                    Destination := CopyStr(
+                        ValueToken.AsValue().AsText(), 1, MaxStrLen(Destination));
+    end;
     /// <summary>
     /// Links all appointment interventions to the generated claim.
     /// This does not duplicate the intervention records.
@@ -617,7 +618,8 @@ end;
 
     /// <summary>
     /// Adds an ICD-11 diagnosis to an existing SHA virtual claim.
-    /// A diagnosis is always linked to a specific appointment intervention.
+    /// Validates the practitioner against HMS Setup Doctor and stores
+    /// the practitioner details together with the submitted diagnosis.
     /// </summary>
     procedure AddClaimDiagnosis(
         AppointmentNo: Code[50];
@@ -633,21 +635,20 @@ end;
         AppointmentIntervention: Record "SHA Appointment Intervention";
         ClaimHeader: Record "SHA Claim Header";
         ClaimDiagnosis: Record "SHA Claim Diagnosis";
+        DocRec: Record "HMS Setup Doctor";
         ShaHttpClient: Codeunit "SHA Http Client";
         PayloadObj: JsonObject;
         ResponseObj: JsonObject;
         PayloadText: Text;
         ResponseText: Text;
         HttpStatusCode: Integer;
-        DiagnosisName: Text;
     begin
         ResponseCode := 0;
         ResponseMsg := '';
 
         // ============================================================
-        // VALIDATION
+        // VALIDATE REQUIRED DETAILS
         // ============================================================
-
         if AppointmentNo = '' then begin
             ResponseMsg := 'Appointment No. is required.';
             exit(false);
@@ -663,52 +664,127 @@ end;
             exit(false);
         end;
 
+        if PractitionerNo = '' then begin
+            ResponseMsg := 'Practitioner Professional Registration No. is required.';
+            exit(false);
+        end;
+
+        // ============================================================
+        // VALIDATE APPOINTMENT
+        // ============================================================
         if not Appointment.Get(AppointmentNo) then begin
             ResponseMsg := StrSubstNo('Appointment %1 was not found.', AppointmentNo);
             exit(false);
         end;
 
         if Appointment."SHA Authorization Code" = '' then begin
-            ResponseMsg := StrSubstNo('Appointment %1 does not have a SHA Authorization Code.', AppointmentNo);
+            ResponseMsg := StrSubstNo(
+                'Appointment %1 does not have a SHA Authorization Code.',
+                AppointmentNo);
             exit(false);
         end;
 
         if Appointment."SHA Visit ID" = '' then begin
-            ResponseMsg := StrSubstNo('Appointment %1 does not have an active SHA Visit.', AppointmentNo);
+            ResponseMsg := StrSubstNo(
+                'Appointment %1 does not have an active SHA Visit.',
+                AppointmentNo);
             exit(false);
         end;
 
         if Appointment."SHA Visit Number" = '' then begin
-            ResponseMsg := StrSubstNo('Appointment %1 does not have a SHA Visit Number.', AppointmentNo);
+            ResponseMsg := StrSubstNo(
+                'Appointment %1 does not have a SHA Visit Number.',
+                AppointmentNo);
             exit(false);
         end;
 
         // ============================================================
         // VALIDATE INTERVENTION
         // ============================================================
+        AppointmentIntervention.Reset();
+        AppointmentIntervention.SetRange("Appointment No.", AppointmentNo);
+        AppointmentIntervention.SetRange("Intervention Code", InterventionCode);
 
-        if not AppointmentIntervention.Get(AppointmentNo, InterventionCode) then begin
+        if not AppointmentIntervention.FindFirst() then begin
             ResponseMsg := StrSubstNo(
-                'Intervention %1 is not linked to appointment %2.',
+                'Intervention %1 does not exist locally for appointment %2.',
                 InterventionCode,
                 AppointmentNo);
+            exit(false);
+        end;
 
+        if AppointmentIntervention."Authorization Code" <>
+           Appointment."SHA Authorization Code"
+        then begin
+            ResponseMsg := StrSubstNo(
+                'Authorization mismatch. Appointment: %1, Intervention: %2, Appointment Auth: %3, Intervention Auth: %4.',
+                AppointmentNo,
+                InterventionCode,
+                Appointment."SHA Authorization Code",
+                AppointmentIntervention."Authorization Code");
             exit(false);
         end;
 
         if UpperCase(AppointmentIntervention."Line Status") <> 'ACTIVE' then begin
             ResponseMsg := StrSubstNo(
-                'Intervention %1 is not active on appointment %2.',
+                'Intervention %1 has status %2 instead of ACTIVE.',
                 InterventionCode,
-                AppointmentNo);
+                AppointmentIntervention."Line Status");
+            exit(false);
+        end;
+        // ============================================================
+        // VALIDATE PRACTITIONER FROM HMS SETUP DOCTOR
+        // PractitionerNo = Professional Registration No.
+        // ============================================================
+        DocRec.Reset();
+        DocRec.SetRange("Proffesional Registration No.", PractitionerNo);
 
+        if not DocRec.FindFirst() then begin
+            ResponseMsg := StrSubstNo(
+                'Practitioner with Professional Registration No. %1 was not found. Please contact the administrator to update the practitioner details.',
+                PractitionerNo);
             exit(false);
         end;
 
-        // ============================================================
-        // PREVENT DUPLICATE ACTIVE DIAGNOSIS
-        // ============================================================
+        if DocRec."Doctor ID" = '' then begin
+            ResponseMsg := StrSubstNo(
+                'Doctor ID is missing for practitioner %1.',
+                PractitionerNo);
+            exit(false);
+        end;
 
+        if DocRec."Doctors Name" = '' then begin
+            ResponseMsg := StrSubstNo(
+                'Practitioner name is missing for Professional Registration No. %1.',
+                PractitionerNo);
+            exit(false);
+        end;
+        PractitionerIdType := GetSHAPractitionerIdType(DocRec."practitioner_identification_type");
+        PractitionerRegulationBody := Format(DocRec."practitioner_regulation_body");
+        // ============================================================
+        // VALIDATE REQUESTED PRACTITIONER DETAILS
+        // against what is configured in HMS Setup Doctor.
+        // ============================================================
+        if PractitionerIdType = '' then begin
+            ResponseMsg := StrSubstNo(
+                'Practitioner Identification Type is not configured for %1 - %2.',
+                DocRec."Doctor ID",
+                DocRec."Doctors Name");
+            exit(false);
+        end;
+
+        if PractitionerRegulationBody = '' then begin
+            ResponseMsg := StrSubstNo(
+                'Practitioner Regulation Body is not configured for %1 - %2.',
+                DocRec."Doctor ID",
+                DocRec."Doctors Name");
+            exit(false);
+        end;
+
+
+        // ============================================================
+        // PREVENT DUPLICATE SUBMITTED DIAGNOSIS
+        // ============================================================
         ClaimDiagnosis.Reset();
         ClaimDiagnosis.SetRange("Appointment No.", AppointmentNo);
         ClaimDiagnosis.SetRange("Diagnosis Code", DiagnosisCode);
@@ -720,51 +796,58 @@ end;
                 'Diagnosis %1 is already submitted against intervention %2.',
                 DiagnosisCode,
                 InterventionCode);
-
             exit(false);
         end;
 
         // ============================================================
-        // PRACTITIONER VALIDATION
-        // If one field is supplied, all three must be supplied.
-        // ============================================================
-
-        if (PractitionerNo <> '') or (PractitionerIdType <> '') or (PractitionerRegulationBody <> '') then
-            if (PractitionerNo = '') or (PractitionerIdType = '') or (PractitionerRegulationBody = '') then begin
-                ResponseMsg := 'Practitioner identification number, identification type and regulation body must be supplied together.';
-                exit(false);
-            end;
-
-        // ============================================================
         // BUILD SHA REQUEST
-        // SHA Authorization Code = consent_token
+        // Use validated values from HMS Setup Doctor.
         // ============================================================
+        PayloadObj.Add(
+     'consent_token',
+     Appointment."SHA Authorization Code");
 
-        PayloadObj.Add('consent_token', Appointment."SHA Authorization Code");
-        PayloadObj.Add('icd_code', DiagnosisCode);
-        PayloadObj.Add('intervention_code', InterventionCode);
+        PayloadObj.Add(
+            'icd_code',
+            DiagnosisCode);
 
-        if PractitionerNo <> '' then begin
-            PayloadObj.Add('practitioner_identification_number', PractitionerNo);
-            PayloadObj.Add('practitioner_identification_type', PractitionerIdType);
-            PayloadObj.Add('practitioner_regulation_body', PractitionerRegulationBody);
-        end;
+        PayloadObj.Add(
+            'intervention_code',
+            InterventionCode);
+
+        PayloadObj.Add(
+            'practitioner_identification_number',
+            DocRec."Proffesional Registration No.");
+
+        PayloadObj.Add(
+            'practitioner_identification_type',
+            PractitionerIdType);
+
+        PayloadObj.Add(
+            'practitioner_regulation_body',
+            PractitionerRegulationBody);
 
         PayloadObj.WriteTo(PayloadText);
 
         // ============================================================
-        // POST TO SHA FIRST
+        // SUBMIT TO SHA
         // ============================================================
-
         if not ShaHttpClient.SendJson(
-            'POST',
-            '/api/v1/claims/diagnoses',
-            PayloadText,
-            ResponseText,
-            HttpStatusCode)
-        then begin
+     'POST',
+     '/api/v1/claims/diagnoses',
+     PayloadText,
+     ResponseText,
+     HttpStatusCode)
+ then begin
             ResponseCode := HttpStatusCode;
-            ResponseMsg := ResponseText;
+
+            ResponseMsg := StrSubstNo(
+                'Failed to add diagnosis. Appointment: %1, Intervention: %2, Consent Token: %3. SHA Response: %4',
+                AppointmentNo,
+                InterventionCode,
+                Appointment."SHA Authorization Code",
+                ResponseText);
+
             exit(false);
         end;
 
@@ -776,12 +859,8 @@ end;
         end;
 
         // ============================================================
-        // SHA ACCEPTED - CREATE LOCAL HISTORY RECORD
+        // SHA ACCEPTED - SAVE DIAGNOSIS + PRACTITIONER SNAPSHOT
         // ============================================================
-
-        DiagnosisName := '';
-        GetOptionalText(ResponseObj, 'diagnosis_name', DiagnosisName);
-
         ClaimDiagnosis.Init();
 
         if GetClaimByAppointment(AppointmentNo, ClaimHeader) then
@@ -792,27 +871,80 @@ end;
         ClaimDiagnosis."Visit ID" := Appointment."SHA Visit ID";
         ClaimDiagnosis."Visit Number" := Appointment."SHA Visit Number";
         ClaimDiagnosis."Consent Token" := Appointment."SHA Authorization Code";
+
         ClaimDiagnosis."Diagnosis Code" := DiagnosisCode;
-        ClaimDiagnosis."Diagnosis Name" := DiagnosisName;
         ClaimDiagnosis."Intervention Code" := InterventionCode;
-        ClaimDiagnosis."Intervention Name" := AppointmentIntervention."Intervention Name";
+        ClaimDiagnosis."Intervention Name" :=
+            AppointmentIntervention."Intervention Name";
+
+        // Practitioner details
+        ClaimDiagnosis."Doctor ID" := DocRec."Doctor ID";
+        ClaimDiagnosis."Doctors Name" := DocRec."Doctors Name";
+        ClaimDiagnosis."Professional Registration No." :=
+            DocRec."Proffesional Registration No.";
+        ClaimDiagnosis."Doc_ID_Type" := DocRec.practitioner_identification_type;
+        ClaimDiagnosis."practitioner_regulation_body" :=
+            DocRec."practitioner_regulation_body";
+        ClaimDiagnosis.Specialization := DocRec.Specialization;
+
+        // SHA response
+        GetOptionalInteger(
+            ResponseObj,
+            'claim_diagnosis_id',
+            ClaimDiagnosis."SHA Claim Diagnosis ID");
+
+        GetOptionalText(
+            ResponseObj,
+            'diagnosis_name',
+            ClaimDiagnosis."Diagnosis Name");
+
+        GetOptionalText(
+            ResponseObj,
+            'edi_claim_diagnosis_guid',
+            ClaimDiagnosis."EDI Claim Diagnosis GUID");
+
+        GetOptionalText(
+            ResponseObj,
+            'edi_claim_diagnosis_replicated',
+            ClaimDiagnosis."EDI Diagnosis Replicated");
+
+        GetOptionalText(
+            ResponseObj,
+            'recorded_on',
+            ClaimDiagnosis."Recorded On");
+
+        GetOptionalText(
+            ResponseObj,
+            'original_visit_date',
+            ClaimDiagnosis."Original Visit Date");
+
+        GetOptionalText(
+            ResponseObj,
+            'site_code',
+            ClaimDiagnosis."Site Code");
+
+        GetOptionalText(
+            ResponseObj,
+            'site_code_type',
+            ClaimDiagnosis."Site Code Type");
+
+        GetOptionalBoolean(
+            ResponseObj,
+            'is_flagged_diagnosis',
+            ClaimDiagnosis."Is Flagged Diagnosis");
+
+        GetOptionalBoolean(
+            ResponseObj,
+            'is_inpatient',
+            ClaimDiagnosis."Is Inpatient");
+
         ClaimDiagnosis.Status := ClaimDiagnosis.Status::Submitted;
         ClaimDiagnosis."SHA Response Code" := HttpStatusCode;
-        ClaimDiagnosis."SHA Response Message" := 'Diagnosis submitted to SHA successfully.';
-        ClaimDiagnosis."Created By" := UserId;
+        ClaimDiagnosis."SHA Response Message" :=
+            'Diagnosis submitted to SHA successfully.';
+        ClaimDiagnosis."Created By" := CopyStr(UserId, 1, 50);
         ClaimDiagnosis."Created At" := CurrentDateTime();
         ClaimDiagnosis."Last Updated At" := CurrentDateTime();
-
-        GetOptionalInteger(ResponseObj, 'claim_diagnosis_id', ClaimDiagnosis."SHA Claim Diagnosis ID");
-        GetOptionalText(ResponseObj, 'diagnosis_name', ClaimDiagnosis."Diagnosis Name");
-        GetOptionalText(ResponseObj, 'edi_claim_diagnosis_guid', ClaimDiagnosis."EDI Claim Diagnosis GUID");
-        GetOptionalText(ResponseObj, 'edi_claim_diagnosis_replicated', ClaimDiagnosis."EDI Diagnosis Replicated");
-        GetOptionalText(ResponseObj, 'recorded_on', ClaimDiagnosis."Recorded On");
-        GetOptionalText(ResponseObj, 'original_visit_date', ClaimDiagnosis."Original Visit Date");
-        GetOptionalText(ResponseObj, 'site_code', ClaimDiagnosis."Site Code");
-        GetOptionalText(ResponseObj, 'site_code_type', ClaimDiagnosis."Site Code Type");
-        GetOptionalBoolean(ResponseObj, 'is_flagged_diagnosis', ClaimDiagnosis."Is Flagged Diagnosis");
-        GetOptionalBoolean(ResponseObj, 'is_inpatient', ClaimDiagnosis."Is Inpatient");
 
         ClaimDiagnosis.Insert(true);
 
@@ -823,7 +955,6 @@ end;
 
         exit(true);
     end;
-
     /// <summary>
     /// Removes an existing diagnosis from the SHA virtual claim.
     /// The local record is retained and marked Removed for audit/history.
@@ -1006,6 +1137,22 @@ end;
         AppointmentIntervention."Claim Amount" := Quantity * UnitPrice;
         AppointmentIntervention."Last Updated At" := CurrentDateTime();
         AppointmentIntervention.Modify();
+    end;
+
+    local procedure GetSHAPractitionerIdType(DocIdType: Option): Text
+    begin
+        case DocIdType of
+            1:
+                exit('registration_number');
+            2:
+                exit('National ID');
+            3:
+                exit('Alien ID');
+            4:
+                exit('Refugee ID');
+            else
+                exit('');
+        end;
     end;
 
     /// <summary>
@@ -1568,10 +1715,7 @@ end;
 
         exit(true);
     end;
-    /// <summary>
-    /// Submits a standard outpatient SHA virtual claim using OTP visit-end authorization.
-    /// Biometrics/discharge_auth_guid is deliberately not used by this method.
-    /// </summary>
+
     procedure SubmitStandardClaimWithOtp(
         AppointmentNo: Code[20];
         InvoiceNumber: Text;
@@ -1596,138 +1740,82 @@ end;
         ResponseCode := 0;
         ResponseMsg := '';
 
-        // ============================================================
         // VALIDATION
-        // ============================================================
+        if AppointmentNo = '' then
+            exit(SetClaimError(ResponseMsg, 'Appointment No. is required.'));
 
-        if AppointmentNo = '' then begin
-            ResponseMsg := 'Appointment No. is required.';
-            exit(false);
-        end;
+        if InvoiceNumber = '' then
+            exit(SetClaimError(ResponseMsg, 'Invoice Number is required.'));
 
-        if InvoiceNumber = '' then begin
-            ResponseMsg := 'Invoice Number is required.';
-            exit(false);
-        end;
-
-        if OTP = '' then begin
-            ResponseMsg := 'OTP is required to authorize claim submission.';
-            exit(false);
-        end;
+        if OTP = '' then
+            exit(SetClaimError(ResponseMsg, 'OTP is required to authorize claim submission.'));
 
         DischargeReason := UpperCase(DischargeReason);
         DischargeStatus := UpperCase(DischargeStatus);
 
-        if not IsValidOutpatientDischargeReason(DischargeReason) then begin
-            ResponseMsg := 'Invalid discharge reason. Allowed values are RECOVERED, REFERRED, ABSCONDED or OTHER.';
-            exit(false);
-        end;
+        if not IsValidOutpatientDischargeReason(DischargeReason) then
+            exit(SetClaimError(
+                ResponseMsg,
+                'Invalid discharge reason. Allowed values are RECOVERED, REFERRED, ABSCONDED or OTHER.'));
 
         if DischargeStatus = '' then
             DischargeStatus := 'FULL';
 
-        if not IsValidDischargeStatus(DischargeStatus) then begin
-            ResponseMsg := 'Invalid discharge status. Allowed values are FULL or PARTIAL.';
-            exit(false);
-        end;
+        if not IsValidDischargeStatus(DischargeStatus) then
+            exit(SetClaimError(
+                ResponseMsg,
+                'Invalid discharge status. Allowed values are FULL or PARTIAL.'));
 
-        if not Appointment.Get(AppointmentNo) then begin
-            ResponseMsg := StrSubstNo('Appointment %1 was not found.', AppointmentNo);
-            exit(false);
-        end;
+        if not Appointment.Get(AppointmentNo) then
+            exit(SetClaimError(
+                ResponseMsg,
+                StrSubstNo('Appointment %1 was not found.', AppointmentNo)));
 
-        if Appointment."SHA Patient CR ID" = '' then begin
-            ResponseMsg := StrSubstNo('Appointment %1 does not have a SHA Patient CR ID.', AppointmentNo);
-            exit(false);
-        end;
+        if Appointment."SHA Patient CR ID" = '' then
+            exit(SetClaimError(
+                ResponseMsg,
+                StrSubstNo('Appointment %1 does not have a SHA Patient CR ID.', AppointmentNo)));
 
-        if Appointment."SHA Authorization Code" = '' then begin
-            ResponseMsg := StrSubstNo('Appointment %1 does not have a SHA Authorization Code.', AppointmentNo);
-            exit(false);
-        end;
+        if Appointment."SHA Authorization Code" = '' then
+            exit(SetClaimError(
+                ResponseMsg,
+                StrSubstNo('Appointment %1 does not have a SHA Authorization Code.', AppointmentNo)));
 
-        if Appointment."SHA Visit ID" = '' then begin
-            ResponseMsg := StrSubstNo('Appointment %1 does not have an active SHA Visit.', AppointmentNo);
-            exit(false);
-        end;
+        if Appointment."SHA Visit ID" = '' then
+            exit(SetClaimError(
+                ResponseMsg,
+                StrSubstNo('Appointment %1 does not have an active SHA Visit.', AppointmentNo)));
 
-        if Appointment."SHA Visit Number" = '' then begin
-            ResponseMsg := StrSubstNo('Appointment %1 does not have a SHA Visit Number.', AppointmentNo);
-            exit(false);
-        end;
+        if Appointment."SHA Visit Number" = '' then
+            exit(SetClaimError(
+                ResponseMsg,
+                StrSubstNo('Appointment %1 does not have a SHA Visit Number.', AppointmentNo)));
 
-        if UpperCase(Format(Appointment."SHA Service Type")) <> 'OUTPATIENT' then begin
-            ResponseMsg := StrSubstNo(
-                'Standard OTP claim submission is intended for OUTPATIENT claims. Appointment %1 service type is %2.',
-                AppointmentNo,
-                Format(Appointment."SHA Service Type"));
+        if UpperCase(Format(Appointment."SHA Service Type")) <> 'OUTPATIENT' then
+            exit(SetClaimError(
+                ResponseMsg,
+                StrSubstNo(
+                    'Standard OTP claim submission is intended for OUTPATIENT claims. Appointment %1 service type is %2.',
+                    AppointmentNo,
+                    Format(Appointment."SHA Service Type"))));
 
-            exit(false);
-        end;
+        if not GetClaimByAppointment(AppointmentNo, ClaimHeader) then
+            exit(SetClaimError(
+                ResponseMsg,
+                StrSubstNo('No SHA claim exists for appointment %1.', AppointmentNo)));
 
-        if not GetClaimByAppointment(AppointmentNo, ClaimHeader) then begin
-            ResponseMsg := StrSubstNo('No SHA claim exists for appointment %1.', AppointmentNo);
-            exit(false);
-        end;
-
-        if not ValidateClaimForSubmission(ClaimHeader."Claim No.") then begin
-            ResponseMsg := StrSubstNo('Claim %1 is not ready for submission.', ClaimHeader."Claim No.");
-            exit(false);
-        end;
-
-        if not ValidateClaimHasBillableLines(ClaimHeader."Claim No.", ResponseMsg) then
-            exit(false);
-
-        // ============================================================
-        // CREATE LOCAL SUBMISSION ATTEMPT
-        // DO NOT SAVE THE ACTUAL OTP
-        // ============================================================
-
-        Submission.Init();
-        Submission."Claim No." := ClaimHeader."Claim No.";
-        Submission."Appointment No." := AppointmentNo;
-        Submission."Patient No." := Appointment."Patient No.";
-        Submission."Patient CR ID" := Appointment."SHA Patient CR ID";
-        Submission."Visit ID" := Appointment."SHA Visit ID";
-        Submission."Visit Number" := Appointment."SHA Visit Number";
-        Submission."Consent Token" := Appointment."SHA Authorization Code";
-        Submission."Invoice Number" := CopyStr(InvoiceNumber, 1, MaxStrLen(Submission."Invoice Number"));
-        Submission."Discharge Reason" := CopyStr(DischargeReason, 1, MaxStrLen(Submission."Discharge Reason"));
-        Submission."Discharge Status" := CopyStr(DischargeStatus, 1, MaxStrLen(Submission."Discharge Status"));
-        Submission.Notes := CopyStr(Notes, 1, MaxStrLen(Submission.Notes));
-        Submission."Authorization Method" := 'OTP';
-        Submission."Beneficiary Contact ID" := CopyStr(BeneficiaryContactId, 1, MaxStrLen(Submission."Beneficiary Contact ID"));
-        Submission."OTP Supplied" := true;
-        Submission.Status := Submission.Status::Pending;
-        Submission."Submitted At" := CurrentDateTime();
-        Submission."Submitted By" := UserId;
-        Submission.Insert(true);
-
-        // ============================================================
-        // BUILD STANDARD OTP REQUEST
-        // ============================================================
-
+        // BUILD REQUEST
         PayloadObj.Add('consent_token', Appointment."SHA Authorization Code");
         PayloadObj.Add('invoice_number', InvoiceNumber);
-                PayloadObj.Add('otp', OTP);
-
+        PayloadObj.Add('otp', OTP);
         PayloadObj.Add('discharge_reason', DischargeReason);
-        // PayloadObj.Add('discharge_status', DischargeStatus);
 
         if Notes <> '' then
             PayloadObj.Add('notes', Notes);
 
-        // if BeneficiaryContactId <> '' then
-        //     PayloadObj.Add('beneficiary_contact_id', BeneficiaryContactId);
-
-        // discharge_auth_guid is intentionally NOT added.
-
         PayloadObj.WriteTo(PayloadText);
 
-        // ============================================================
         // SUBMIT TO SHA
-        // ============================================================
-
         if not ShaHttpClient.SendJson(
             'POST',
             '/api/v1/claims/submit',
@@ -1736,40 +1824,46 @@ end;
             HttpStatusCode)
         then begin
             ResponseCode := HttpStatusCode;
-            ResponseMsg := ResponseText;
+            ResponseMsg := GetSHAErrorMessage(ResponseText);
 
-            Submission.Status := Submission.Status::Failed;
-            Submission."HTTP Response Code" := HttpStatusCode;
-            Submission."Response Message" := CopyStr(ResponseText, 1, MaxStrLen(Submission."Response Message"));
-            Submission.Modify();
-
-            ClaimHeader."Last Submission Code" := HttpStatusCode;
-            ClaimHeader."Last Submission Message" := CopyStr(ResponseText, 1, MaxStrLen(ClaimHeader."Last Submission Message"));
-            ClaimHeader."Last Updated At" := CurrentDateTime();
-            ClaimHeader.Modify();
+            if ResponseMsg = '' then
+                ResponseMsg := ResponseText;
 
             exit(false);
         end;
 
         ResponseCode := HttpStatusCode;
 
+        // SHA returned success HTTP response but invalid JSON.
+        // Do NOT create a submission.
         if not ResponseObj.ReadFrom(ResponseText) then begin
             ResponseMsg := 'SHA returned an invalid claim submission response.';
-
-            Submission.Status := Submission.Status::Failed;
-            Submission."HTTP Response Code" := HttpStatusCode;
-            Submission."Response Message" := CopyStr(ResponseMsg, 1, MaxStrLen(Submission."Response Message"));
-            Submission.Modify();
-
             exit(false);
         end;
 
-        // ============================================================
-        // SHA ACCEPTED
-        // ============================================================
-
-        PopulateClaimSubmissionFromSHAResponse(ResponseObj, Submission);
-
+        // CREATE SUBMISSION ONLY AFTER SUCCESSFUL SHA REQUEST
+        Submission.Init();
+        Submission."Claim No." := ClaimHeader."Claim No.";
+        Submission."Appointment No." := AppointmentNo;
+        Submission."Patient No." := Appointment."Patient No.";
+        Submission."Patient CR ID" := Appointment."SHA Patient CR ID";
+        Submission."Visit ID" := Appointment."SHA Visit ID";
+        Submission."Visit Number" := Appointment."SHA Visit Number";
+        Submission."Consent Token" := Appointment."SHA Authorization Code";
+        Submission."Invoice Number" :=
+            CopyStr(InvoiceNumber, 1, MaxStrLen(Submission."Invoice Number"));
+        Submission."Discharge Reason" :=
+            CopyStr(DischargeReason, 1, MaxStrLen(Submission."Discharge Reason"));
+        Submission."Discharge Status" :=
+            CopyStr(DischargeStatus, 1, MaxStrLen(Submission."Discharge Status"));
+        Submission.Notes :=
+            CopyStr(Notes, 1, MaxStrLen(Submission.Notes));
+        Submission."Authorization Method" := 'OTP';
+        Submission."Beneficiary Contact ID" :=
+            CopyStr(BeneficiaryContactId, 1, MaxStrLen(Submission."Beneficiary Contact ID"));
+        Submission."OTP Supplied" := true;
+        Submission."Submitted At" := CurrentDateTime();
+        Submission."Submitted By" := UserId;
         Submission."HTTP Response Code" := HttpStatusCode;
         Submission."Response Message" := 'Claim submitted successfully.';
 
@@ -1778,8 +1872,13 @@ end;
         else
             Submission.Status := Submission.Status::Submitted;
 
-        Submission.Modify();
+        Submission.Insert(true);
 
+        // POPULATE SHA RETURNED DETAILS
+        PopulateClaimSubmissionFromSHAResponse(ResponseObj, Submission);
+        Submission.Modify(true);
+
+        // UPDATE CLAIM
         ApplySubmissionToClaimHeader(
             ClaimHeader,
             Submission,
@@ -1803,6 +1902,41 @@ end;
         exit(true);
     end;
 
+
+local procedure SetClaimError(var ResponseMsg: Text; ErrorMessage: Text): Boolean
+begin
+    ResponseMsg := ErrorMessage;
+    exit(false);
+end;
+local procedure GetSHAErrorMessage(ResponseText: Text): Text
+var
+    JObject: JsonObject;
+    JToken: JsonToken;
+begin
+    if ResponseText = '' then
+        exit('');
+
+    if not JObject.ReadFrom(ResponseText) then
+        exit(ResponseText);
+
+    if JObject.Get('message', JToken) then
+        if not JToken.AsValue().IsNull() then
+            exit(JToken.AsValue().AsText());
+
+    if JObject.Get('error', JToken) then
+        if not JToken.AsValue().IsNull() then
+            exit(JToken.AsValue().AsText());
+
+    if JObject.Get('description', JToken) then
+        if not JToken.AsValue().IsNull() then
+            exit(JToken.AsValue().AsText());
+
+    if JObject.Get('detail', JToken) then
+        if not JToken.AsValue().IsNull() then
+            exit(JToken.AsValue().AsText());
+
+    exit(ResponseText);
+end;
     local procedure ApplySubmissionToClaimHeader(
     var ClaimHeader: Record "SHA Claim Header";
     Submission: Record "SHA Claim Submission";
@@ -2646,15 +2780,15 @@ end;
     end;
 
     local procedure EncodeQueryValue(Value: Text): Text
-begin
-    Value := Value.Replace('%', '%25');
-    Value := Value.Replace(' ', '%20');
-    Value := Value.Replace('&', '%26');
-    Value := Value.Replace('+', '%2B');
-    Value := Value.Replace('#', '%23');
-    Value := Value.Replace('?', '%3F');
-    Value := Value.Replace('=', '%3D');
+    begin
+        Value := Value.Replace('%', '%25');
+        Value := Value.Replace(' ', '%20');
+        Value := Value.Replace('&', '%26');
+        Value := Value.Replace('+', '%2B');
+        Value := Value.Replace('#', '%23');
+        Value := Value.Replace('?', '%3F');
+        Value := Value.Replace('=', '%3D');
 
-    exit(Value);
-end;
+        exit(Value);
+    end;
 }
